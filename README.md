@@ -1,0 +1,170 @@
+# MyFootballLens — lightweight football video analysis
+
+Local, single-analyst tagging tool for football coaches and analysts: tag a match, cut highlights, draw on frames, read the stats.
+A small Python server (FastAPI, in `.venv`) plus a plain HTML/JS UI in your browser.
+The browser decodes the video on the GPU, and ffmpeg handles cutting and encoding in a separate low-priority process.
+The server idles at about 50 MB of RAM.
+
+## Start
+
+Double-click **`start.bat`**. The first run creates `.venv` and installs the two dependencies.
+You can also start it by hand:
+
+```
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\python run.py            # opens http://127.0.0.1:8000
+```
+
+Options: `--port 8010`, `--no-browser`. Requires Python 3.11+ and `ffmpeg`/`ffprobe` on PATH (needed for exports and proxies).
+
+## Workflow
+
+1. **+ New match**: title, teams and colours, link the video (**Browse…**), and paste rosters one per line (`9 Jordan Smith ST`).
+2. Set the **2nd-half kick-off** (video time) so the match clock and the 1st/2nd-half stats are correct.
+3. **Tag**: press a code button's letter for Team A, or Shift+letter for Team B.
+   - Each press creates a clip using that button's lead/lag, e.g. Shot = −8 s/+4 s.
+   - **Toggle** buttons (⟲, e.g. Possession) run until you press them again. Starting the other team's toggle ends the current one.
+4. The new tag is selected in the inspector. From there you can:
+   - click the pitch for its location (Shift+click, or a second click on Cross/Corner/Free kick, sets the end point);
+   - pick a player;
+   - press **0–9** for descriptors (Success/Fail, On target, Left/Right/Head…);
+   - add a note.
+5. **Timeline**:
+   - drag clip edges to trim, or drag a clip to move it;
+   - double-click a clip to play it;
+   - Ctrl+wheel zooms, Shift+wheel pans;
+   - click a row label to filter to that row.
+6. **Draw** (<kbd>`</kbd>): arrows, runs, lines, rings, player spotlight, zones, freehand and text.
+   Saved drawings freeze playback for *Hold* seconds and are burned into exports as freeze-frames.
+   - **Curved arrow / curved run / curved line**: click the start, click a point the curve passes through, click the end.
+     Esc or right-click cancels.
+   - **Text**: click where it goes. A text box opens with:
+     - multi-line text (Ctrl+Enter = done);
+     - size;
+     - left/centre/right alignment;
+     - bold/italic;
+     - background (Dark / Light / Colour / None).
+
+     Colour comes from the swatches. Double-click existing text to edit it.
+   - **Select tool** (pointer icon):
+     - click a shape to select it, then drag to move it;
+     - drag its square handles to reshape it, or a curve's round yellow point to change the bend;
+     - change its colour or width;
+     - **Del** removes it, and **Ctrl+Z** undoes any change.
+   - The **Drawings** tab lists every drawing with a preview, its time, and the clip(s) it will be exported with.
+     From there you can **View**, **Edit**, change **Hold**, or **Delete** a drawing.
+     Drawings that aren't inside any clip are flagged, and **+ Clip here** creates one around them.
+   - Yellow triangles on the timeline ruler mark drawings: click one to jump exactly to it, double-click to edit it.
+7. **Playlists**: collect clips (the selected tag, ticked tags, or everything matching the filters), reorder them by drag, then **Play all** or **Export MP4**.
+   Exports are frame-accurate, with optional captions (time · event · team · player · labels · note) and drawings.
+   Encoding uses NVENC if available, then Intel QuickSync, then libx264.
+8. **Stats**:
+   - goals, shots, on target, xG-lite and possession;
+   - momentum per 5 minutes;
+   - shot map;
+   - heatmap / 18 zones / thirds;
+   - event matrix with success %;
+   - phase time and per-player counts.
+
+   Click a number in the matrix to see those clips.
+9. **Report** gives a printable HTML match report (use Print → Save as PDF).
+10. **Live** tab: tag against a match clock during the game. Afterwards, enter both kick-off times in the video and **Sync**.
+11. **Templates**: edit buttons (name, instant/toggle, lead/lag, hotkey, colour, A+B/neutral, location, end point) and descriptors (group, label, key, success/fail).
+12. **Data ▾**: Sportscode-compatible XML import/export (`ALL_INSTANCES`), CSV export, exports folder.
+
+## Branding
+
+- **Colours** come from the MyFootballLens palette: #334162, #394D75, #809AD0, #C4AF9A, #660306 and white.
+  There are two themes, switched with the sun/moon button in the top bar:
+  - **Dark**: flat #334162 everywhere, separated by thin borders, with #809AD0 for active tabs and buttons.
+  - **Light**: #809AD0 page, white panels, deep navy #1F2840 text, #334162 buttons with white text.
+
+  Both use #C4AF9A for highlights and #660306 maroon for delete.
+  The app follows your Windows light/dark setting until you press the button, then remembers your choice.
+  Pitches stay navy in both themes; in dark they are one shade deeper (#2A3654) so they stand out from the flat background.
+  The video area stays black in both themes.
+- **Fonts** (all bundled, all SIL Open Font License; licence texts are in `static/fonts/OFL-*.txt`):
+  - **Inter**: interface text, the match report, and the captions on exported videos (`app/assets/fonts/Inter-600.ttf`).
+  - **Hubot Sans**: the app name, the intro and big headings.
+  - **JetBrains Mono**: timecodes, the match clock and the timeline ruler, so digits stay put while the video plays.
+- **Logo**: the MyFootballLens logo appears in the top bar and on the splash screen (`static/brand/`).
+  The browser-tab icon is the transparent wordmark (`static/brand/favicon-64.png`).
+- **Exports**: exported videos get the transparent logo bottom-right, at about 12% of the height and 85% opacity.
+  Untick **Add MyFootballLens logo** in the export dialog to leave it out.
+- The repository holds only the small logo copies the app needs.
+  The full-size originals are kept privately in a local `logo/` folder, which is not uploaded.
+  If you change the logo, regenerate the copies from those originals (with the app stopped):
+  ```
+  ffmpeg -y -i logo\2131.png -vf "format=rgba,colorkey=0xFFFFFF:0.06:0.12,scale=600:600:flags=lanczos" app\assets\watermark.png
+  ffmpeg -y -i logo\2131.png -vf "scale=256:256:flags=lanczos" static\brand\logo-256.png
+  ffmpeg -y -i "logo\2nd Logo_transparentadsa.png" -vf "format=rgba,scale=64:64:flags=lanczos" static\brand\favicon-64.png
+  ```
+
+## Keyboard
+
+| Key | Action |
+|---|---|
+| Space | Play / pause (Live tab: start / pause clock) |
+| ← / → | −5 s / +5 s (Shift: 1 s) |
+| , / . | Frame back / forward |
+| [ / ] | Slower / faster (0.25×–4×) |
+| letter / Shift+letter | Tag for Team A / Team B |
+| 0–9 | Descriptor on the selected tag |
+| Enter | Play selected clip |
+| PgUp / PgDn | Previous / next tag (respects filters) |
+| Del | Delete selected tag (with Undo) |
+| ` | Draw on frame (Esc closes, Ctrl+Z undoes) |
+| Esc | Stop playlist / deselect |
+
+## Keeping it light
+
+- **Long, 4K or odd-codec files**: Match settings → **Create 720p proxy**. Playback then uses the proxy, which has a keyframe every second for instant seeking, while exports still use the original file.
+- To use a separate data folder (for testing, or a second workspace), set `VAT_DATA_DIR` before starting, e.g. `set VAT_DATA_DIR=D:\analysis-2027` then run `start.bat`.
+- Videos are linked by path, never copied. If you move a file, re-link it in Match settings.
+- Everything lives in `data/`:
+  - `analysis.db` (SQLite);
+  - `backups/` (the last 10 copies, taken automatically at every start);
+  - `exports/`, `drawings/` and `proxies/`.
+
+## Layout
+
+```
+run.py / start.bat      launcher (picks a free port, opens the browser)
+app/main.py             JSON API, video streaming (HTTP Range), report route
+app/db.py               SQLite schema, backups, helpers
+app/export.py           ffmpeg jobs: highlight export, proxies, encoder detection
+app/stats.py            matrix, possession, xG-lite, momentum, positions()
+app/report.py           printable report (inline SVG)
+app/sportscode_xml.py   XML import/export
+app/plugins/            reserved for a future OpenCV/YOLO tracker (see docstring)
+static/                 index.html, css, js modules (no build step)
+```
+
+## Future: computer vision
+
+v1 is deliberately manual (no OpenCV/YOLO), because PyTorch+YOLO would add 2–3 GB of install and 1.5–4 GB of RAM.
+The hooks for adding it later are already in place:
+
+- the `tracks` and `calibration` tables;
+- the plugin contract in `app/plugins/__init__.py`;
+- `stats.positions(source="tracks")`.
+
+A tracker would install from its own `requirements-ai.txt`, run offline as a separate process, and feed the existing heatmaps.
+
+## License
+
+MyFootballLens is **open source** under the [MIT License](LICENSE). Copyright © 2026 Ali Shidqie.
+You're welcome to use it, study it, modify it and build your own analysis tools from it.
+Please keep the copyright notice in copies of the code.
+
+The **MyFootballLens name and logo** are not covered by the MIT License.
+If you publish a modified version, give it its own name and logo.
+See [TRADEMARKS.md](TRADEMARKS.md).
+
+Bundled third-party components (the Inter, Hubot Sans and JetBrains Mono fonts) keep their own open licences.
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+Other product names, such as Sportscode, belong to their respective owners.
+They are mentioned only to describe file-format compatibility.
+MyFootballLens is not affiliated with or endorsed by them.

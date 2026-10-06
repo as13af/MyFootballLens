@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MyFootballLens</title>
+<link rel="icon" type="image/png" href="/static/brand/favicon-64.png">
+<script>
+  // Apply the theme before first paint: saved choice, else the Windows/browser setting.
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('mfl-theme'); } catch (e) {}
+    if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="preload" href="/static/fonts/Inter-var-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<header id="topbar">
+  <div class="brand" title="About MyFootballLens"><img class="logo" src="/static/brand/logo-256.png" alt="">MyFootballLens</div>
+  <select id="matchSelect" title="Current match"></select>
+  <button id="btnNewMatch" class="ghost">+ New match</button>
+  <button id="btnSettings" class="ghost">Match settings</button>
+  <nav id="tabs">
+    <button data-view="tag" class="active">Tag</button>
+    <button data-view="stats">Stats</button>
+    <button data-view="live">Live</button>
+    <button data-view="templates">Templates</button>
+  </nav>
+  <div class="spacer"></div>
+  <div id="jobsIndicator"></div>
+  <button id="btnReport" class="ghost">Report</button>
+  <div class="menu">
+    <button class="ghost">Data ▾</button>
+    <div class="menu-items">
+      <button data-act="xml-export">Export Sportscode XML</button>
+      <button data-act="xml-import">Import Sportscode XML…</button>
+      <button data-act="csv">Export tags CSV</button>
+      <button data-act="exports">Open exports folder</button>
+    </div>
+  </div>
+  <button id="btnTheme" class="ghost" title="Switch light / dark theme"></button>
+  <button id="btnHelp" class="ghost" title="Keyboard shortcuts">?</button>
+  <input type="file" id="xmlFile" accept=".xml" hidden>
+</header>
+
+<main>
+  <!-- ============ TAG VIEW ============ -->
+  <section id="view-tag" class="view active">
+    <div id="videoPane">
+      <div id="videoWrap">
+        <video id="video" preload="auto" playsinline></video>
+        <canvas id="drawCanvas"></canvas>
+        <div id="textPop" class="textpop" hidden>
+          <textarea id="tpText" rows="3" placeholder="Type your text… (Enter = new line, Ctrl+Enter = done)"></textarea>
+          <div class="row"><span class="lbl">Size</span><input id="tpSize" type="range" min="14" max="96" step="1"><span id="tpSizeVal" class="mono small">30</span></div>
+          <div class="row">
+            <div class="seg" id="tpAlign" title="Line alignment">
+              <button data-align="left" title="Align left">
+                <svg viewBox="0 0 20 20" width="14" height="14"><path d="M3 5h14M3 9h9M3 13h14M3 17h9" stroke="currentColor" stroke-width="2"/></svg></button>
+              <button data-align="center" title="Centre">
+                <svg viewBox="0 0 20 20" width="14" height="14"><path d="M3 5h14M5.5 9h9M3 13h14M5.5 17h9" stroke="currentColor" stroke-width="2"/></svg></button>
+              <button data-align="right" title="Align right">
+                <svg viewBox="0 0 20 20" width="14" height="14"><path d="M3 5h14M8 9h9M3 13h14M8 17h9" stroke="currentColor" stroke-width="2"/></svg></button>
+            </div>
+            <div class="seg" id="tpStyle">
+              <button data-style="bold" title="Bold"><b>B</b></button>
+              <button data-style="italic" title="Italic"><i>I</i></button>
+            </div>
+          </div>
+          <div class="row"><span class="lbl">Background</span>
+            <div class="seg" id="tpBg">
+              <button data-bg="dark">Dark</button><button data-bg="light">Light</button><button data-bg="color">Colour</button><button data-bg="none">None</button>
+            </div>
+          </div>
+          <div class="row"><span class="lbl">Text colour: use the swatches in the drawing bar</span></div>
+          <div class="row">
+            <button id="tpDelete" class="ghost small danger" hidden>Delete</button><span class="spacer"></span>
+            <button id="tpCancel" class="ghost small">Cancel</button><button id="tpDone" class="primary small">Done</button>
+          </div>
+        </div>
+        <div id="videoEmpty" class="empty-state"></div>
+        <div id="seqBadge" hidden></div>
+      </div>
+      <div id="drawBar" hidden>
+        <div class="seg" id="drawTools">
+          <button data-tool="select" title="Select: click a shape to move it, drag its points, Del deletes, double-click text to edit">
+            <svg viewBox="0 0 20 20"><path d="M5 3 L5 16 L8.5 12.5 L11 18 L13 17 L10.5 11.5 L15 11.5 Z" fill="currentColor"/></svg></button>
+          <button data-tool="arrow" title="Arrow (pass/movement)">➜</button>
+          <button data-tool="carrow" title="Curved arrow: click start, click a point it bends through, click end">
+            <svg viewBox="0 0 20 20"><path d="M3 16 Q6 3 15 7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M17 8.5 L12.3 9.3 L14.6 4.9 Z" fill="currentColor"/></svg></button>
+          <button data-tool="dash" title="Dashed arrow (run)">⇢</button>
+          <button data-tool="cdash" title="Curved run: click start, click a point it bends through, click end">
+            <svg viewBox="0 0 20 20"><path d="M3 16 Q6 3 15 7" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2.5"/><path d="M17 8.5 L12.3 9.3 L14.6 4.9 Z" fill="currentColor"/></svg></button>
+          <button data-tool="line" title="Line (defensive line)">╱</button>
+          <button data-tool="cline" title="Curved line: click start, click a point it bends through, click end">
+            <svg viewBox="0 0 20 20"><path d="M3 15 Q10 1 17 15" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>
+          <button data-tool="circle" title="Ring (player/area)">◯</button>
+          <button data-tool="spot" title="Player spotlight">⬮</button>
+          <button data-tool="rect" title="Zone">▭</button>
+          <button data-tool="free" title="Freehand">✎</button>
+          <button data-tool="text" title="Text">T</button>
+        </div>
+        <div class="seg" id="drawColors"></div>
+        <select id="drawWidth" title="Line width"><option value="3">Thin</option><option value="5" selected>Medium</option><option value="8">Thick</option></select>
+        <label class="inline" title="Freeze-frame length in playback and exports">Hold <input id="drawHold" type="number" min="0.5" max="30" step="0.5" value="3">s</label>
+        <span class="spacer"></span>
+        <button id="drawUndo" class="ghost" title="Ctrl+Z">Undo</button>
+        <button id="drawClear" class="ghost">Clear</button>
+        <button id="drawDelete" class="ghost danger" hidden>Delete</button>
+        <button id="drawSave" class="primary">Save drawing</button>
+        <button id="drawClose" class="ghost" title="Esc">✕</button>
+      </div>
+      <div id="transport">
+        <button id="tPlay" class="icon" title="Play/Pause (Space)">▶</button>
+        <button id="tBack" class="icon" title="−5s (←)">«</button>
+        <button id="tFwd" class="icon" title="+5s (→)">»</button>
+        <button id="tFrameB" class="icon" title="Previous frame (,)">‹</button>
+        <button id="tFrameF" class="icon" title="Next frame (.)">›</button>
+        <div id="tTime" class="mono">0:00:00.0</div>
+        <div id="tClock" class="mono clock" title="Match clock">00:00 <small>1H</small></div>
+        <div class="seg" id="tHalves">
+          <button data-half="1" title="Jump to 1st-half kick-off (Shift+click: set it to the current time)">⏮ 1H</button>
+          <button data-half="2" title="Jump to 2nd-half kick-off (Shift+click: set it to the current time)">⏮ 2H</button>
+        </div>
+        <div class="spacer"></div>
+        <label class="inline small" title="Pause on saved drawings during playback"><input type="checkbox" id="tDrawPause" checked> Drawings</label>
+        <select id="tSpeed" title="Speed ([ / ])">
+          <option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="0.75">0.75×</option>
+          <option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option>
+          <option value="3">3×</option><option value="4">4×</option>
+        </select>
+        <input id="tVol" type="range" min="0" max="1" step="0.05" value="1" title="Volume">
+        <button id="tDraw" class="ghost" title="Draw on frame (`)">✎ Draw</button>
+      </div>
+    </div>
+
+    <div id="side">
+      <aside id="codePane">
+        <div class="pane-head">
+          <h3>Code window</h3>
+          <span class="muted small">key = <b id="teamAHint">A</b> · Shift+key = <b id="teamBHint">B</b></span>
+        </div>
+        <div id="codeWindow" class="code-grid"></div>
+      </aside>
+      <aside id="inspector"></aside>
+    </div>
+
+    <div id="lowerPane">
+      <div class="tabbar">
+        <div class="seg" id="lowerTabs">
+          <button data-panel="timeline" class="active">Timeline</button>
+          <button data-panel="list">Tag list</button>
+          <button data-panel="playlists">Playlists</button>
+          <button data-panel="drawings" id="drawingsTab">Drawings</button>
+        </div>
+        <div id="filters" class="filters">
+          <select id="fTeam"><option value="">All teams</option></select>
+          <select id="fCode"><option value="">All events</option></select>
+          <select id="fPlayer"><option value="">All players</option></select>
+          <input id="fText" type="search" placeholder="Label / note…">
+          <button id="fClear" class="ghost small" title="Clear filters">✕</button>
+        </div>
+        <div class="spacer"></div>
+        <div id="tlZoom" class="seg">
+          <button data-z="out" title="Zoom out (Ctrl+wheel)">−</button>
+          <button data-z="fit">Fit</button>
+          <button data-z="in" title="Zoom in (Ctrl+wheel)">+</button>
+        </div>
+      </div>
+      <div id="panel-timeline" class="panel active">
+        <canvas id="tlRuler"></canvas>
+        <div id="tlScroll"><canvas id="tlCanvas"></canvas></div>
+      </div>
+      <div id="panel-list" class="panel"></div>
+      <div id="panel-playlists" class="panel"></div>
+      <div id="panel-drawings" class="panel"></div>
+    </div>
+  </section>
+
+  <!-- ============ OTHER VIEWS ============ -->
+  <section id="view-stats" class="view scroll"></section>
+  <section id="view-live" class="view"></section>
+  <section id="view-templates" class="view scroll"></section>
+</main>
+
+<div id="splash" hidden role="dialog" aria-label="About MyFootballLens">
+  <div class="sp-inner">
+    <div class="sp-brand">
+      <img class="sp-logo" src="/static/brand/logo-256.png" alt="MyFootballLens logo">
+      <h1>MyFootballLens</h1>
+    </div>
+    <p class="sp-tag">Football video analysis — tag, clip, draw, measure.</p>
+    <div class="sp-credits">
+      <p class="sp-by">Created by <b>Ali Shidqie</b></p>
+      <p class="sp-links">
+        <a href="https://github.com/as13af" target="_blank" rel="noopener">GitHub · github.com/as13af</a>
+        <a href="https://www.linkedin.com/in/as13af" target="_blank" rel="noopener">LinkedIn · linkedin.com/in/as13af</a>
+      </p>
+      <p class="sp-copy">© 2026 Ali Shidqie · Open source under the MIT License</p>
+    </div>
+  </div>
+  <div class="sp-foot">
+    <label class="inline small"><input type="checkbox" id="spNoShow"> Don't show at startup</label>
+    <button id="spSkip" class="ghost small">Skip ›</button>
+  </div>
+</div>
+<dialog id="dlg"></dialog>
+<div id="toasts"></div>
+<script type="module" src="/static/js/main.js"></script>
+</body>
+</html>

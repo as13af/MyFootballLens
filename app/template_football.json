@@ -1,0 +1,43 @@
+{
+  "name": "Football (default)",
+  "buttons": [
+    {"code": "Possession",           "kind": "toggle",  "lead": 0,  "lag": 0,  "hotkey": "p", "color": "#64748b", "team_scope": "both", "loc": 0, "loc_end": 0},
+    {"code": "Build-up",             "kind": "toggle",  "lead": 2,  "lag": 0,  "hotkey": "b", "color": "#0ea5e9", "team_scope": "both", "loc": 0, "loc_end": 0},
+    {"code": "Attacking transition", "kind": "instant", "lead": 3,  "lag": 10, "hotkey": "a", "color": "#22c55e", "team_scope": "both", "loc": 1, "loc_end": 0},
+    {"code": "Defensive transition", "kind": "instant", "lead": 3,  "lag": 10, "hotkey": "d", "color": "#f97316", "team_scope": "both", "loc": 1, "loc_end": 0},
+    {"code": "Shot",                 "kind": "instant", "lead": 8,  "lag": 4,  "hotkey": "s", "color": "#eab308", "team_scope": "both", "loc": 1, "loc_end": 0},
+    {"code": "Goal",                 "kind": "instant", "lead": 15, "lag": 8,  "hotkey": "g", "color": "#16a34a", "team_scope": "both", "loc": 1, "loc_end": 0},
+    {"code": "Chance",               "kind": "instant", "lead": 10, "lag": 4,  "hotkey": "h", "color": "#a3e635", "team_scope": "both", "loc": 1, "loc_end": 0},
+    {"code": "Cross",                "kind": "instant", "lead": 6,  "lag": 3,  "hotkey": "x", "color": "#38bdf8", "team_scope": "both", "loc": 1, "loc_end": 1},
+    {"code": "Corner",               "kind": "instant", "lead": 3,  "lag": 12, "hotkey": "c", "color": "#818cf8", "team_scope": "both", "loc": 1, "loc_end": 1},
+    {"code": "Free kick",            "kind": "instant", "lead": 3,  "lag": 10, "hotkey": "f", "color": "#a78bfa", "team_scope": "both", "loc": 1, "loc_end": 1},
+    {"code": "Throw-in",             "kind": "instant", "lead": 2,  "lag": 6,  "hotkey": "t", "color": "#94a3b8", "team_scope": "both", "loc": 1, "loc_end": 0},
+    {"code": "Penalty",              "kind": "instant", "lead": 3,  "lag": 10, "hotkey": "k", "color": "#f43f5e", "team_scope": "both", "loc": 0, "loc_end": 0},
+    {"code": "Press",                "kind": "instant", "lead": 3,  "lag": 5,  "hotkey": "q", "color": "#fb923c", "team_scope": "both", "loc": 1, "loc_end": 0},
+    {"code": "Regain",               "kind": "instant", "lead": 5,  "lag": 6,  "hotkey": "r", "color": "#10b981", "team_scope": "both", "loc": 1, "loc_end": 0},
+    {"code": "Turnover",             "kind": "instant", "lead": 5,  "lag": 6,  "hotkey": "o", "color": "#ef4444", "team_scope": "both", "loc": 1, "loc_end": 0},
+    {"code": "Foul",                 "kind": "instant", "lead": 6,  "lag": 4,  "hotkey": "u", "color": "#d946ef", "team_scope": "both", "loc": 1, "loc_end": 0},
+    {"code": "Card",                 "kind": "instant", "lead": 8,  "lag": 4,  "hotkey": "j", "color": "#facc15", "team_scope": "both", "loc": 0, "loc_end": 0},
+    {"code": "Offside",              "kind": "instant", "lead": 6,  "lag": 3,  "hotkey": "z", "color": "#cbd5e1", "team_scope": "both", "loc": 1, "loc_end": 0},
+    {"code": "Substitution",         "kind": "instant", "lead": 3,  "lag": 5,  "hotkey": "i", "color": "#60a5fa", "team_scope": "both", "loc": 0, "loc_end": 0},
+    {"code": "Key moment",           "kind": "instant", "lead": 8,  "lag": 4,  "hotkey": "m", "color": "#f8fafc", "team_scope": "none", "loc": 0, "loc_end": 0}
+  ],
+  "descriptors": [
+    {"grp": "Outcome",   "label": "Success",    "hotkey": "1", "outcome": "success"},
+    {"grp": "Outcome",   "label": "Fail",       "hotkey": "2", "outcome": "fail"},
+    {"grp": "Shot",      "label": "On target",  "hotkey": "3", "outcome": "success"},
+    {"grp": "Shot",      "label": "Off target", "hotkey": "4", "outcome": "fail"},
+    {"grp": "Shot",      "label": "Blocked",    "hotkey": "5", "outcome": "fail"},
+    {"grp": "Body",      "label": "Left foot",  "hotkey": "6", "outcome": null},
+    {"grp": "Body",      "label": "Right foot", "hotkey": "7", "outcome": null},
+    {"grp": "Body",      "label": "Head",       "hotkey": "8", "outcome": null},
+    {"grp": "Card",      "label": "Yellow",     "hotkey": "9", "outcome": null},
+    {"grp": "Card",      "label": "Red",        "hotkey": "0", "outcome": null},
+    {"grp": "Situation", "label": "Open play",  "hotkey": "",  "outcome": null},
+    {"grp": "Situation", "label": "Set piece",  "hotkey": "",  "outcome": null},
+    {"grp": "Situation", "label": "Counter",    "hotkey": "",  "outcome": null},
+    {"grp": "Pressure",  "label": "High",       "hotkey": "",  "outcome": null},
+    {"grp": "Pressure",  "label": "Mid",        "hotkey": "",  "outcome": null},
+    {"grp": "Pressure",  "label": "Low",        "hotkey": "",  "outcome": null}
+  ]
+}

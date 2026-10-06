@@ -1,0 +1,26 @@
+# Python / environment
+.venv/
+__pycache__/
+*.pyc
+
+# Your match data: database, backups, exports, drawings, proxies (never upload)
+data/
+
+# Full-size original logo files stay private; the app only needs static/brand/ and app/assets/watermark.png
+logo/
+
+# Safety nets: video, databases, local env files, OS clutter
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.db
+*.sqlite
+*.db-wal
+*.db-shm
+.env
+.env.*
+Thumbs.db
+desktop.ini
+.DS_Store
+.claude/
