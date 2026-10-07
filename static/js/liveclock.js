@@ -2,7 +2,7 @@
 // Live tags store seconds since their half's kick-off until synced.
 import { api } from './api.js';
 import { S, on, emit, codeColor, teamColor, teamShort, isUnsyncedLive } from './state.js';
-import { renderCodeWindow, updateToggleStates, renderDescriptors, updateDescriptorStates } from './codewindow.js';
+import { renderCodeWindow, updateToggleStates, renderDescriptors, updateDescriptorStates, markCurrent } from './codewindow.js';
 import { loadTags, select, deleteTags } from './tags.js';
 import { video } from './player.js';
 import { $, esc, fmtClock, fmtTime, parseTime, toast, errToast } from './ui.js';
@@ -153,4 +153,4 @@ on('tags', () => {
   updateToggleStates($('#lCodes'));
   updateDescriptorStates($('#lDesc'));
 });
-on('select', () => { if (S.view === 'live') { renderRecent(); updateDescriptorStates($('#lDesc')); } });
+on('select', () => { if (S.view === 'live') { renderRecent(); updateDescriptorStates($('#lDesc')); markCurrent($('#lCodes')); } });

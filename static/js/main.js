@@ -4,10 +4,12 @@ import './theme.js';
 import { S, on, emit, template, teamName, isUnsyncedLive, filteredTags, selectedTag } from './state.js';
 import { video, loadVideo, hasVideo, togglePlay, step, frame, setRate, seek, playRange, stopSequence } from './player.js';
 import { loadTags, select, deleteTags, pressButton, applyDescriptor, descriptorByHotkey } from './tags.js';
-import { renderCodeWindow, updateToggleStates, flashButton } from './codewindow.js';
+import { renderCodeWindow, updateToggleStates, flashButton, markCurrent } from './codewindow.js';
+import './highlight.js';
 import { requestDraw } from './timeline.js';
 import { shortcutsHtml } from './inspector.js';
 import './taglist.js';
+import * as moments from './moments.js';
 import { loadPlaylists } from './playlists.js';
 import * as draw from './telestration.js';
 import './drawings.js';
@@ -120,6 +122,7 @@ on('match', () => {
   renderFilters();
 });
 on('tags', () => { updateToggleStates($('#codeWindow')); renderFilters(); });
+on('select', () => markCurrent($('#codeWindow')));
 
 // ---------------- filters ----------------
 function renderFilters() {
@@ -206,6 +209,10 @@ window.addEventListener('keydown', (e) => {
   }
   if (!S.match) return;
   const k = keyOf(e);
+  // N / Shift+N steps through pasted moments, unless the template gives N to a code button.
+  if (k === 'n' && tagView && !template().buttons.some((b) => b.hotkey?.toLowerCase() === 'n') && !descriptorByHotkey('n')) {
+    e.preventDefault(); moments.step(e.shiftKey ? -1 : 1); return;
+  }
   const d = descriptorByHotkey(k);
   if (d) { e.preventDefault(); applyDescriptor(d).catch(errToast); return; }
   const btn = template().buttons.find((b) => b.hotkey && b.hotkey.toLowerCase() === k);
@@ -271,6 +278,7 @@ $('.menu-items').onclick = async (e) => {
   if (act === 'xml-export') location.href = `/api/matches/${S.match.id}/export.xml`;
   if (act === 'csv') location.href = `/api/matches/${S.match.id}/export.csv`;
   if (act === 'xml-import') $('#xmlFile').click();
+  if (act === 'paste') moments.openPasteDialog();
 };
 $('#xmlFile').onchange = async (e) => {
   const f = e.target.files[0];
@@ -296,6 +304,8 @@ $('#btnHelp').onclick = () => dialog({
       <b>4.</b> The new tag is selected: press 0–9 for descriptors, click a player, click the pitch for location.<br>
       <b>5.</b> Timeline: drag clip edges to trim, drag a clip to move it, double-click to play, Ctrl+wheel to zoom.<br>
       <b>6.</b> Press <kbd>\`</kbd> to draw on the frame; saved drawings freeze playback and appear in exports.<br>
+      <b>6b.</b> Wrote notes with video times, like “LV presses well (17:38)”? <b>Data ▾ → Paste timestamps…</b> makes a clip of each line;
+      step through them in the <b>Moments</b> tab with <kbd>N</kbd> and draw.<br>
       <b>7.</b> Build playlists, then <b>Export MP4</b>. Stats and the printable report update live.<br>
       <b>Live tab:</b> tag with a clock during the match, then sync the tags to the video afterwards.
     </div></div>`,

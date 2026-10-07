@@ -103,6 +103,7 @@ button {
   padding: 5px 10px; cursor: pointer; line-height: 1.2;
 }
 button:hover { border-color: var(--hover-line); background: var(--hover-bg); }
+:is(input, select, textarea):not(:disabled):hover { border-color: var(--hover-line); }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
   outline: 2px solid var(--focus); outline-offset: 1px;
 }
@@ -228,6 +229,9 @@ main { height: calc(100vh - var(--topbar-h)); }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tile .pads button:hover { background: color-mix(in srgb, var(--tc) 40%, var(--panel-3)); }
+/* the button that made the selected clip */
+.tile.current { border-color: var(--focus); }
+.tile .pads button.current { outline: 2px solid var(--focus); outline-offset: 1px; background: color-mix(in srgb, var(--tc) 50%, var(--panel-3)); }
 /* a running toggle: solid team colour with a white inner edge, no animation */
 .tile .pads button.active { background: var(--tc); border-color: var(--tc); color: #fff; box-shadow: inset 0 0 0 1px #fff; }
 .tile .pads button.hit { background: var(--tc); color: #fff; }
@@ -259,14 +263,21 @@ button.chip.on { background: var(--accent); border-color: var(--accent); color: 
 #tlCanvas { cursor: default; }
 #panel-list { overflow: auto; }
 #panel-playlists { flex-direction: row !important; }
+.mp-list { max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+.mp-list tr.warn td { background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.mp-list tbody tr { cursor: default; }
 
 table { border-collapse: collapse; width: 100%; }
 th, td { padding: 4px 8px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
 th { position: sticky; top: 0; background: var(--panel); color: var(--muted); font-weight: 500; font-size: 11px; z-index: 1; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 td.wrap { white-space: normal; max-width: 280px; }
+/* rows: hover = thin bar, selected = solid accent bar + tint, now playing = sand play mark */
 tbody tr:hover { background: var(--hover-bg); }
-tbody tr.sel { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+tbody tr:hover > td:first-child { box-shadow: inset 2px 0 0 var(--hover-line); }
+tbody tr.sel, tbody tr.sel:hover { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+tbody tr.sel > td:first-child { box-shadow: inset 4px 0 0 var(--accent); }
+tbody tr.playing > td:first-child::before { content: '\25B6'; color: var(--warn); font-size: 9px; margin-right: 5px; vertical-align: 1px; }
 tbody tr { cursor: pointer; }
 .sw { display: inline-block; width: 9px; height: 9px; border-radius: 1px; margin-right: 6px; vertical-align: middle; }
 

@@ -38,6 +38,18 @@ export function updateToggleStates(el) {
     if (!b || b.kind !== 'toggle') return;
     $$('button[data-team]', tile).forEach((p) => p.classList.toggle('active', S.openToggles.has(`${b.code}|${p.dataset.team}`)));
   });
+  markCurrent(el);
+}
+
+/** Outline the button that made the selected clip, so you can see which one you're working with. */
+export function markCurrent(el) {
+  const t = selectedTag();
+  const i = t ? template().buttons.findIndex((b) => b.code === t.code) : -1;
+  $$('.tile', el).forEach((tile) => {
+    const on = i >= 0 && +tile.dataset.i === i;
+    tile.classList.toggle('current', on);
+    $$('button[data-team]', tile).forEach((p) => p.classList.toggle('current', on && (p.dataset.team || null) === (t.team || null)));
+  });
 }
 
 /** Visual feedback when a hotkey fires a button. */

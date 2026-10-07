@@ -107,6 +107,17 @@ export function tip(html, ev) {
   tipEl.style.left = x + 'px'; tipEl.style.top = y + 'px';
 }
 
+/**
+ * Re-render a panel without moving its lists. Rebuilding with innerHTML recreates the scrolling
+ * boxes inside it at the top, so clicking row 9 would otherwise jump the list back to row 1.
+ */
+export function keepScroll(el, render) {
+  const boxes = () => [el, ...el.querySelectorAll('.pl-items, .pl-list')];
+  const before = boxes().map((b) => b.scrollTop);
+  render();
+  boxes().forEach((b, i) => { if (before[i] != null) b.scrollTop = before[i]; });
+}
+
 export function isTyping(ev) {
   const t = ev.target;
   return t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName)) && t.type !== 'checkbox' && t.type !== 'range';

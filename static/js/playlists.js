@@ -4,7 +4,7 @@ import { S, on, emit, tagById, codeColor, teamShort, teamColor, playerById, play
 import { playSequence } from './player.js';
 import { select } from './tags.js';
 import { track, systemInfo } from './jobs.js';
-import { $, esc, dialog, toast, errToast, confirmBox } from './ui.js';
+import { $, esc, dialog, toast, errToast, confirmBox, keepScroll } from './ui.js';
 
 const el = $('#panel-playlists');
 let currentId = null;
@@ -74,7 +74,7 @@ function render() {
         <thead><tr><th></th><th>#</th><th>Time</th><th>Event</th><th>Team</th><th>Player</th><th>Labels</th><th class="num">Dur</th><th>Clip note</th><th></th></tr></thead>
         <tbody>${items.map((it, i) => {
           const t = it.tag;
-          return `<tr draggable="true" data-i="${i}" class="${t.id === S.selectedId ? 'sel' : ''}">
+          return `<tr draggable="true" data-i="${i}" data-id="${t.id}" class="${t.id === S.selectedId ? 'sel' : ''} ${S.playing.has(t.id) ? 'playing' : ''}">
             <td class="handle" title="Drag to reorder">⠿</td><td class="muted">${i + 1}</td><td class="mono">${tagClockStr(t)}</td>
             <td><span class="sw" style="background:${esc(codeColor(t.code))}"></span>${esc(t.code)}</td>
             <td style="color:${esc(teamColor(t.team))}">${t.team ? esc(teamShort(t.team)) : ''}</td>
@@ -152,6 +152,7 @@ export async function exportDialog(tagIds, defaultName, clipNotes = {}) {
   if (!info.ffmpeg) { toast('ffmpeg not found on PATH — export is unavailable', { error: true }); return; }
   if (!S.match.video_exists) { toast('Link the match video first (Match settings)', { error: true }); return; }
   const ids = tagIds.filter((id) => tagById(id)?.end != null);
+  const nNotes = ids.filter((id) => (clipNotes[id] || tagById(id).note || '').trim()).length;
   const nDraw = S.drawings.filter((d) => ids.some((id) => { const t = tagById(id); return d.t >= t.start && d.t < t.end; })).length;
   dialog({
     title: `Export ${ids.length} clip${ids.length === 1 ? '' : 's'} to MP4`,
@@ -161,7 +162,8 @@ export async function exportDialog(tagIds, defaultName, clipNotes = {}) {
       <label>Resolution<select name="resolution">
         <option value="1080">1080p (max)</option><option value="720" selected>720p</option>
         <option value="480">480p (small file)</option><option value="source">Source</option></select></label>
-      <label class="check"><input type="checkbox" name="captions" checked> Captions (time · event · team · player · labels · note)</label>
+      <label class="check"><input type="checkbox" name="captions" checked> Captions (time · event · team · player · labels)</label>
+      <label class="check"><input type="checkbox" name="show_notes" ${nNotes ? 'checked' : 'disabled'}> Notes under the caption (${nNotes} clip${nNotes === 1 ? ' has' : 's have'} one; long notes wrap to 2 lines)</label>
       <label class="check"><input type="checkbox" name="drawings" checked> Freeze-frame drawings (${nDraw} in these clips)</label>
       <label class="check"><input type="checkbox" name="logo" checked> Add MyFootballLens logo (bottom-right)</label>
       <p class="full note-box">Frame-accurate re-encode using <b>${esc(info.encoder || '?')}</b>. Runs in the background at low priority, so you can keep tagging. Files go to <span class="mono">data/exports</span>.</p>
@@ -170,7 +172,7 @@ export async function exportDialog(tagIds, defaultName, clipNotes = {}) {
       const fd = new FormData(form);
       const job = await api.post('/api/export', {
         match_id: S.match.id, tag_ids: ids, name: fd.get('name'), resolution: fd.get('resolution'),
-        captions: fd.get('captions') === 'on', drawings: fd.get('drawings') === 'on', logo: fd.get('logo') === 'on', notes: clipNotes,
+        captions: fd.get('captions') === 'on', show_notes: fd.get('show_notes') === 'on', drawings: fd.get('drawings') === 'on', logo: fd.get('logo') === 'on', notes: clipNotes,
       });
       track(job);
       toast('Export started');
@@ -181,7 +183,7 @@ export async function exportDialog(tagIds, defaultName, clipNotes = {}) {
 // Only re-render while visible; otherwise remember to do it when the panel is shown.
 let dirty = true;
 function maybeRender() {
-  if (el.classList.contains('active') && S.view === 'tag' && !el.contains(document.activeElement)) { dirty = false; render(); }
+  if (el.classList.contains('active') && S.view === 'tag' && !el.contains(document.activeElement)) { dirty = false; keepScroll(el, render); }
   else dirty = true;
 }
 on('playlists', maybeRender);

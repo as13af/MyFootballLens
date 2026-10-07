@@ -206,7 +206,8 @@ def clear_proxy(mid: int):
 
 
 # ---------------- tags ----------------
-TAG_FIELDS = ("code", "team", "start", "end", "player_id", "x", "y", "x2", "y2", "note", "source", "live_half", "synced")
+TAG_FIELDS = ("code", "team", "start", "end", "player_id", "x", "y", "x2", "y2", "note", "source", "live_half",
+              "synced", "moment")
 
 
 @app.get("/api/matches/{mid}/tags")
@@ -234,6 +235,19 @@ def create_tag(mid: int, body: dict = Body(...)):
         _match(c, mid)
         tid = _insert_tag(c, mid, body)
         return db.get_tags(c, mid, [tid])[0]
+
+
+@app.post("/api/matches/{mid}/tags/bulk")
+def create_tags(mid: int, body: dict = Body(...)):
+    """Many tags in one transaction (pasted timestamps); returns them in the order given."""
+    items = body.get("tags") or []
+    if any(not t.get("code") or t.get("start") is None for t in items):
+        raise HTTPException(400, "code and start are required")
+    with db.conn() as c:
+        _match(c, mid)
+        ids = [_insert_tag(c, mid, t) for t in items]
+        by_id = {t["id"]: t for t in db.get_tags(c, mid, ids)} if ids else {}
+        return [by_id[i] for i in ids]
 
 
 @app.patch("/api/tags/{tid}")
@@ -561,6 +575,7 @@ def start_export(body: dict = Body(...)):
         raise HTTPException(400, "No clips selected")
     job = export.start_export(int(body["match_id"]), ids, body.get("name") or "Highlights",
                               {"resolution": body.get("resolution", "720"), "captions": body.get("captions", True),
+                               "show_notes": body.get("show_notes", True),
                                "drawings": body.get("drawings", True), "logo": body.get("logo", True),
                                "notes": {int(k): str(v) for k, v in (body.get("notes") or {}).items()}})
     return export.public(job)

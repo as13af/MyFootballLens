@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import threading
 import time
 import uuid
@@ -158,10 +159,20 @@ def _scale(w, h) -> str:
             f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1")
 
 
+def _caption_size(h) -> int:
+    return max(16, round(h / 26))
+
+
+def _note_width(w, h) -> int:
+    """Characters per note line so the caption box stays within ~60% of the frame width
+    (Inter SemiBold averages a little over half its size per character)."""
+    return max(20, int(w * 0.6 / (_caption_size(h) * 0.56)))
+
+
 def _caption(textfile, h) -> str:
     if not FONT:
         return ""
-    fs = max(16, round(h / 26))
+    fs = _caption_size(h)
     m = round(fs * 1.1)  # margin from the frame edge, outside the box padding
     # Top-right corner; text_align=R right-aligns the note line under the caption line.
     return (f",drawtext=fontfile='{_esc(FONT)}':textfile='{_esc(textfile)}':expansion=none:"
@@ -212,6 +223,7 @@ def _export(job, match_id, tag_ids, name, opts):
     w, h = _out_size(info, opts.get("resolution", "720"))
     fps = info["fps"]
     captions = opts.get("captions", True)
+    show_notes = opts.get("show_notes", True)
     use_drawings = opts.get("drawings", True)
     use_logo = opts.get("logo", True) and WATERMARK.exists()
     pix = PIX[enc]
@@ -227,7 +239,8 @@ def _export(job, match_id, tag_ids, name, opts):
         s, e = max(0.0, t["start"]), min(info["duration"] or 1e12, t["end"])
         if e - s < 0.2:
             continue
-        cap = _caption_text(t, match, players, n, len(clips), opts.get("notes", {}).get(t["id"]))
+        cap = _caption_text(t, match, players, n, len(clips), opts.get("notes", {}).get(t["id"]),
+                            info=captions, notes=show_notes, wrap=_note_width(w, h))
         pts = [d for d in drawings if use_drawings and s <= d["t"] < e and d.get("png_path")
                and Path(d["png_path"]).exists()]
         cur = s
@@ -249,7 +262,7 @@ def _export(job, match_id, tag_ids, name, opts):
             capfile = tmp / f"cap{i:04d}.txt"
             # newline="\n": Windows "\r\n" would show up as an extra blank line in drawtext
             capfile.write_text(sg["cap"], encoding="utf-8", newline="\n")
-            cap_f = _caption(capfile, h) if captions else ""
+            cap_f = _caption(capfile, h) if sg["cap"] else ""
             if sg["type"] == "span":
                 dur = sg["e"] - sg["s"]
                 inputs = ["-ss", f"{sg['s']:.3f}", "-t", f"{dur:.3f}", "-i", src]
@@ -311,7 +324,16 @@ def _export(job, match_id, tag_ids, name, opts):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def _caption_text(t, match, players, n, count, clip_note=None) -> str:
+def _caption_text(t, match, players, n, count, clip_note=None, *, info=True, notes=True, wrap=50) -> str:
+    """Caption box text: the info line (n/count · clock · event · team · player · labels) and/or the note,
+    each switched on separately. Notes wrap to at most two lines so they stay inside the frame."""
+    lines = []
+    note = (clip_note or t.get("note") or "").strip()  # playlist clip note wins over the tag note
+    if notes and note:
+        lines = textwrap.wrap(" ".join(note.split()), width=wrap, max_lines=2, placeholder=" …",
+                              break_on_hyphens=False)
+    if not info:
+        return "\n".join(lines)
     team = {"A": match["team_a"], "B": match["team_b"]}.get(t.get("team") or "", "")
     parts = [f"{n}/{count}", db.fmt_clock(db.match_clock(t["start"], match)), t["code"]]
     if team:
@@ -322,11 +344,7 @@ def _caption_text(t, match, players, n, count, clip_note=None) -> str:
     labels = ", ".join(l["label"] for l in t.get("labels", []))
     if labels:
         parts.append(labels)
-    text = "  ·  ".join(parts)
-    note = (clip_note or t.get("note") or "").strip()  # playlist clip note wins over the tag note
-    if note:
-        text += "\n" + note[:120]
-    return text
+    return "\n".join(["  ·  ".join(parts), *lines])
 
 
 # ---------------- proxy ----------------

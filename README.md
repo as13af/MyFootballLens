@@ -41,8 +41,9 @@ Options: `--port 8010`, `--no-browser`. Requires Python 3.11+ and `ffmpeg`/`ffpr
    - **Curved arrow / curved run / curved line**: click the start, click a point the curve passes through, click the end.
      Esc or right-click cancels.
    - **Text**: click where it goes. A text box opens with:
-     - multi-line text (Ctrl+Enter = done);
+     - text that wraps onto new lines by itself, so you can type a whole sentence in one go (Enter still starts a new line; Ctrl+Enter = done);
      - size;
+     - width: how wide the text can get before it wraps, from 15% to 100% of the frame (default 40%). Lines never run past the right edge of the frame;
      - left/centre/right alignment;
      - bold/italic;
      - background (Dark / Light / Colour / None).
@@ -57,10 +58,19 @@ Options: `--port 8010`, `--no-browser`. Requires Python 3.11+ and `ffmpeg`/`ffpr
      From there you can **View**, **Edit**, change **Hold**, or **Delete** a drawing.
      Drawings that aren't inside any clip are flagged, and **+ Clip here** creates one around them.
    - Yellow triangles on the timeline ruler mark drawings: click one to jump exactly to it, double-click to edit it.
-7. **Playlists**: collect clips (the selected tag, ticked tags, or everything matching the filters), reorder them by drag, then **Play all** or **Export MP4**.
-   Exports are frame-accurate, with optional captions (time · event · team · player · labels · note) and drawings.
+7. **Moments from your notes**: paste notes that end in video timestamps, and every line becomes a clip you can step through and draw on.
+   See [Moments from your notes](#moments-from-your-notes) below.
+8. **Playlists**: collect clips (the selected tag, ticked tags, or everything matching the filters), reorder them by drag, then **Play all** or **Export MP4**.
+   Exports are frame-accurate. In the export dialog you can switch on or off:
+   - **Captions**: time · event · team · player · labels;
+   - **Notes**: each clip's note under the caption, wrapped to at most 2 lines (cut with "…") so it stays inside the frame;
+   - **Drawings** and the **logo**.
+
    Encoding uses NVENC if available, then Intel QuickSync, then libx264.
-8. **Stats**:
+   - **What's highlighted**: the selected clip has a solid bar on the left of its row and a glowing outline on the timeline.
+     Clips under the playhead show a ▶ in the lists and a sand line on the timeline.
+     The code-window button that made the selected clip stays outlined.
+9. **Stats**:
    - goals, shots, on target, xG-lite and possession;
    - momentum per 5 minutes;
    - shot map;
@@ -69,10 +79,44 @@ Options: `--port 8010`, `--no-browser`. Requires Python 3.11+ and `ffmpeg`/`ffpr
    - phase time and per-player counts.
 
    Click a number in the matrix to see those clips.
-9. **Report** gives a printable HTML match report (use Print → Save as PDF).
-10. **Live** tab: tag against a match clock during the game. Afterwards, enter both kick-off times in the video and **Sync**.
-11. **Templates**: edit buttons (name, instant/toggle, lead/lag, hotkey, colour, A+B/neutral, location, end point) and descriptors (group, label, key, success/fail).
-12. **Data ▾**: Sportscode-compatible XML import/export (`ALL_INSTANCES`), CSV export, exports folder.
+10. **Report** gives a printable HTML match report (use Print → Save as PDF).
+11. **Live** tab: tag against a match clock during the game. Afterwards, enter both kick-off times in the video and **Sync**.
+12. **Templates**: edit buttons (name, instant/toggle, lead/lag, hotkey, colour, A+B/neutral, location, end point) and descriptors (group, label, key, success/fail).
+13. **Data ▾**: Sportscode-compatible XML import/export (`ALL_INSTANCES`), CSV export, exports folder.
+
+## Moments from your notes
+
+Use this when you watch a match and write notes like these:
+
+```
+Luke Vickery Moments
+1st Half
+0 – 5
+LV pressed very well (17:38)
+LV made a good run into space (19:22)
+LV helping defense (1:00:21)
+```
+
+1. Go to **Data ▾ → Paste timestamps…**, or the **Moments** tab → **+ Paste timestamps…**, and paste your notes.
+2. Check the preview:
+   - every line with a time becomes a moment;
+   - lines without a time (titles, "1st Half", "0 – 5") are skipped;
+   - the first of those lines becomes the playlist name;
+   - a time earlier than the line before it is highlighted, as it's often a typo.
+3. Choose the **Event** (default *Key moment*), optionally a **Player** and **Team**, and how many seconds each clip starts before and ends after the timestamp (default 5 and 5).
+4. Press **Add clips**. Each line becomes a clip with your text as its note, and they're all collected in a playlist.
+
+Then open the **Moments** tab to work through them:
+
+- Click a moment to jump there. The video stops exactly on your timestamp, not at the clip start.
+- Press <kbd>N</kbd> / <kbd>Shift+N</kbd> for the next / previous moment.
+  If your template gives N to a code button, use the list instead.
+- Press <kbd>`</kbd>, **✎ Draw**, or double-click a row to draw on that frame. Rows with a drawing show ✎, and the header counts how many are done.
+- **Export MP4** exports every moment as one video, with your drawings as freeze-frames.
+  Your notes appear under the caption; untick **Notes** in the export dialog to leave them out.
+
+Timestamps are read as **video time** (how far into the file), written as `m:ss`, `mm:ss` or `h:mm:ss`, anywhere on the line.
+If you paste the same notes again, moments that already exist are skipped.
 
 ## Animated drawings
 

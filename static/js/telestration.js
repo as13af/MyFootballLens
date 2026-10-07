@@ -14,7 +14,7 @@ let sel = null;          // index of the selected shape (Select tool)
 let drag = null;         // { kind: 'move' | 'pt', ... }
 let hist = [];           // undo snapshots of `shapes`
 let textEdit = null;     // { shape, index (null = new), before }
-const textDefaults = { size: 30, align: 'left', bold: true, italic: false, bg: 'dark' };
+const textDefaults = { size: 30, wrap: 0.4, align: 'left', bold: true, italic: false, bg: 'dark' };
 
 $('#drawColors').innerHTML = COLORS.map((c) => `<button data-c="${c}" title="${c}"><span style="background:${c}"></span></button>`).join('');
 
@@ -98,16 +98,35 @@ function strokeArrow(ctx, pts, lw, { dashed, head, dashOffset = 0 }) {
   }
 }
 
-/** Text block layout in pixels. The anchor (pts[0]) is the block's left edge; alignment aligns the lines inside. */
+/** Break one paragraph into lines no wider than maxW, at spaces (a single over-long word stays whole). */
+function wrapLine(ctx, para, maxW) {
+  if (ctx.measureText(para).width <= maxW) return [para];
+  const out = [];
+  let cur = '';
+  for (const word of para.split(/\s+/).filter(Boolean)) {
+    const next = cur ? `${cur} ${word}` : word;
+    if (cur && ctx.measureText(next).width > maxW) { out.push(cur); cur = word; } else cur = next;
+  }
+  out.push(cur);
+  return out;
+}
+
+/**
+ * Text block layout in pixels. The anchor (pts[0]) is the block's left edge; alignment aligns the lines inside.
+ * `sh.wrap` = widest line as a share of the frame width; lines also stop at the frame's right edge.
+ * Text without `wrap` (drawn before wrapping existed) keeps only its own line breaks.
+ */
 function textLayout(ctx, sh, w, h) {
   const s = h / 720;
   const legacy = !sh.align;   // drawings saved before text options existed
   const fs = (sh.size ?? 30 * (sh.w || 5) / 5) * s;
   ctx.font = `${sh.italic ? 'italic ' : ''}${sh.bold === false ? 500 : 700} ${fs}px system-ui, "Segoe UI", sans-serif`;
-  const lines = String(sh.text || '').split('\n');
-  const widths = lines.map((l) => ctx.measureText(l).width);
-  const bw = Math.max(1, ...widths), lh = fs * 1.22, pad = fs * 0.38;
+  const lh = fs * 1.22, pad = fs * 0.38;
   const left = sh.pts[0][0] * w;
+  const maxW = sh.wrap ? Math.max(fs * 3, Math.min(sh.wrap * w, w - left - pad * 2)) : Infinity;
+  const lines = String(sh.text || '').split('\n').flatMap((para) => wrapLine(ctx, para, maxW));
+  const widths = lines.map((l) => ctx.measureText(l).width);
+  const bw = Math.max(1, ...widths);
   const top = legacy ? sh.pts[0][1] * h - fs * 0.85 : sh.pts[0][1] * h;
   return { fs, lines, widths, bw, lh, pad, left, top, box: { x: left - pad, y: top - pad * 0.7, w: bw + pad * 2, h: lines.length * lh + pad * 1.2 } };
 }
@@ -695,10 +714,16 @@ function placePop() {
   const r = canvas.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
   const box = bounds({ ...textEdit.shape, text: textEdit.shape.text || ' ' }, r.width, r.height, canvas.getContext('2d'));
   const ox = r.left - wr.left, oy = r.top - wr.top;
-  let top = oy + box.y + box.h + 10;
-  if (top + pop.offsetHeight > wrap.clientHeight - 8) top = oy + box.y - pop.offsetHeight - 10;
-  top = Math.max(8, Math.min(top, wrap.clientHeight - pop.offsetHeight - 8));
-  const left = Math.max(8, Math.min(ox + box.x, wrap.clientWidth - pop.offsetWidth - 8));
+  const W = wrap.clientWidth, H = wrap.clientHeight, pw = pop.offsetWidth, ph = pop.offsetHeight;
+  const clampX = (x) => Math.max(8, Math.min(x, W - pw - 8)), clampY = (y) => Math.max(8, Math.min(y, H - ph - 8));
+  let left = clampX(ox + box.x), top;
+  if (oy + box.y + box.h + 10 + ph <= H - 8) top = oy + box.y + box.h + 10;   // below the text
+  else if (oy + box.y - ph - 10 >= 8) top = oy + box.y - ph - 10;             // above it
+  else {
+    // Tall text (e.g. a narrow wrap width): beside it, on whichever side has room.
+    top = clampY(oy + box.y);
+    left = ox + box.x + box.w + 10 + pw <= W - 8 ? ox + box.x + box.w + 10 : clampX(ox + box.x - pw - 10);
+  }
   pop.style.left = left + 'px'; pop.style.top = top + 'px';
 }
 
@@ -713,6 +738,8 @@ function syncPop() {
   const sh = textEdit.shape;
   $('#tpSize').value = sh.size;
   $('#tpSizeVal').textContent = Math.round(sh.size);
+  $('#tpWrap').value = Math.round((sh.wrap || 1) * 100);
+  $('#tpWrapVal').textContent = sh.wrap ? `${Math.round(sh.wrap * 100)}%` : 'off';
   $$('#tpAlign button').forEach((b) => b.classList.toggle('active', b.dataset.align === sh.align));
   $$('#tpStyle button').forEach((b) => b.classList.toggle('active', !!sh[b.dataset.style]));
   $$('#tpBg button').forEach((b) => b.classList.toggle('active', b.dataset.bg === sh.bg));
@@ -726,7 +753,7 @@ function closeText(commit) {
   const empty = !shape.text.trim();
   if (commit && !empty) {
     if (index == null) { snap(); shapes.push(shape); sel = shapes.length - 1; }
-    Object.assign(textDefaults, { size: shape.size, align: shape.align, bold: shape.bold, italic: shape.italic, bg: shape.bg });
+    Object.assign(textDefaults, { size: shape.size, wrap: shape.wrap || textDefaults.wrap, align: shape.align, bold: shape.bold, italic: shape.italic, bg: shape.bg });
   } else if (index != null) {
     if (commit && empty) { shapes.splice(index, 1); sel = null; }        // emptied text = delete
     else { shapes[index] = JSON.parse(before); hist.pop(); }              // cancelled edit
@@ -737,6 +764,7 @@ function closeText(commit) {
 const editText = (fn) => { if (!textEdit) return; fn(textEdit.shape); syncPop(); placePop(); redraw(); };
 $('#tpText').addEventListener('input', (e) => editText((s) => { s.text = e.target.value; }));
 $('#tpSize').addEventListener('input', (e) => editText((s) => { s.size = +e.target.value; }));
+$('#tpWrap').addEventListener('input', (e) => editText((s) => { s.wrap = +e.target.value / 100; }));
 $('#tpAlign').onclick = (e) => { const b = e.target.closest('[data-align]'); if (b) editText((s) => { s.align = b.dataset.align; }); };
 $('#tpStyle').onclick = (e) => { const b = e.target.closest('[data-style]'); if (b) editText((s) => { s[b.dataset.style] = !s[b.dataset.style]; }); };
 $('#tpBg').onclick = (e) => { const b = e.target.closest('[data-bg]'); if (b) editText((s) => { s.bg = b.dataset.bg; }); };

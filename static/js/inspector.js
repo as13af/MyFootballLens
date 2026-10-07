@@ -16,6 +16,7 @@ const SHORTCUTS = [
   ['Space', 'Play / pause'], ['← / →', '−5 s / +5 s (Shift: 1 s)'], [', / .', 'Frame back / forward'],
   ['[ / ]', 'Slower / faster'], ['Letter', 'Tag for team A'], ['Shift+Letter', 'Tag for team B'],
   ['0–9', 'Descriptor on selected tag'], ['Enter', 'Play selected clip'], ['PgUp / PgDn', 'Previous / next tag'],
+  ['N / Shift+N', 'Next / previous moment'],
   ['Del', 'Delete selected tag'], ['`', 'Draw on frame'], ['Esc', 'Deselect / stop'],
 ];
 

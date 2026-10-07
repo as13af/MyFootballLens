@@ -2,7 +2,7 @@
 import { S, on, emit, filteredTags, codeColor, teamColor, teamShort, playerById, playerLabel, tagClockStr, halfOf, isUnsyncedLive } from './state.js';
 import { select, deleteTags } from './tags.js';
 import { addToPlaylist, exportDialog } from './playlists.js';
-import { $, esc, confirmBox } from './ui.js';
+import { $, esc, confirmBox, keepScroll } from './ui.js';
 
 const el = $('#panel-list');
 let sortKey = 'start', sortDir = 1;
@@ -43,7 +43,7 @@ function render() {
     </div>
     <table><thead style="position:sticky;top:37px;z-index:1"><tr><th></th>${COLS.map(([k, l]) =>
       `<th data-sort="${k === 'clock' ? 'start' : k}" style="cursor:pointer">${l}${(k === 'clock' ? 'start' : k) === sortKey ? (sortDir > 0 ? ' ▴' : ' ▾') : ''}</th>`).join('')}</tr></thead>
-    <tbody>${tags.map((t) => `<tr data-id="${t.id}" class="${t.id === S.selectedId ? 'sel' : ''}">
+    <tbody>${tags.map((t) => `<tr data-id="${t.id}" class="${t.id === S.selectedId ? 'sel' : ''} ${S.playing.has(t.id) ? 'playing' : ''}">
       <td><input type="checkbox" data-chk="${t.id}" ${S.checked.has(t.id) ? 'checked' : ''}></td>
       <td class="mono">${tagClockStr(t)}</td><td class="muted">${halfOf(t)}</td>
       <td><span class="sw" style="background:${esc(codeColor(t.code))}"></span>${esc(t.code)}${t.end == null ? ' <span class="muted">(open)</span>' : ''}</td>
@@ -83,7 +83,7 @@ function render() {
 
 let dirty = true;
 function maybeRender() {
-  if (el.classList.contains('active') && S.view === 'tag') { dirty = false; render(); } else dirty = true;
+  if (el.classList.contains('active') && S.view === 'tag') { dirty = false; keepScroll(el, render); } else dirty = true;
 }
 ['tags', 'select', 'filters', 'checked', 'playlists', 'match'].forEach((ev) => on(ev, maybeRender));
 on('panel', () => { if (dirty) maybeRender(); });

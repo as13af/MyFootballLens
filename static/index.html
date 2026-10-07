@@ -37,6 +37,7 @@
     <div class="menu-items">
       <button data-act="xml-export">Export Sportscode XML</button>
       <button data-act="xml-import">Import Sportscode XML…</button>
+      <button data-act="paste">Paste timestamps…</button>
       <button data-act="csv">Export tags CSV</button>
       <button data-act="exports">Open exports folder</button>
     </div>
@@ -54,8 +55,9 @@
         <video id="video" preload="auto" playsinline></video>
         <canvas id="drawCanvas"></canvas>
         <div id="textPop" class="textpop" hidden>
-          <textarea id="tpText" rows="3" placeholder="Type your text… (Enter = new line, Ctrl+Enter = done)"></textarea>
+          <textarea id="tpText" rows="3" placeholder="Type your text… it wraps by itself (Enter = new line, Ctrl+Enter = done)"></textarea>
           <div class="row"><span class="lbl">Size</span><input id="tpSize" type="range" min="14" max="96" step="1"><span id="tpSizeVal" class="mono small">30</span></div>
+          <div class="row" title="Lines wrap at this share of the frame width"><span class="lbl">Width</span><input id="tpWrap" type="range" min="15" max="100" step="1"><span id="tpWrapVal" class="mono small">40%</span></div>
           <div class="row">
             <div class="seg" id="tpAlign" title="Line alignment">
               <button data-align="left" title="Align left">
@@ -158,6 +160,7 @@
         <div class="seg" id="lowerTabs">
           <button data-panel="timeline" class="active">Timeline</button>
           <button data-panel="list">Tag list</button>
+          <button data-panel="moments">Moments</button>
           <button data-panel="playlists">Playlists</button>
           <button data-panel="drawings" id="drawingsTab">Drawings</button>
         </div>
@@ -180,6 +183,7 @@
         <div id="tlScroll"><canvas id="tlCanvas"></canvas></div>
       </div>
       <div id="panel-list" class="panel"></div>
+      <div id="panel-moments" class="panel"></div>
       <div id="panel-playlists" class="panel"></div>
       <div id="panel-drawings" class="panel"></div>
     </div>

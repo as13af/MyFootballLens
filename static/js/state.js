@@ -13,6 +13,7 @@ export const S = {
   checked: new Set(),   // tag ids ticked in the tag list
   filters: { team: '', code: '', player: '', text: '' },
   openToggles: new Map(), // "code|team" -> tag id (toggle tags with no end yet)
+  playing: new Set(),   // clips under the playhead (highlight.js)
 };
 
 const listeners = {};

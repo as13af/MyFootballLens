@@ -14,6 +14,7 @@ const view = { t0: 0, pps: 0.25 };
 let rows = [];
 let drag = null;
 let pending = 0;
+let hoverId = null;   // clip under the mouse
 
 const head = document.createElement('div');
 head.style.cssText = 'position:absolute;top:0;bottom:0;width:2px;background:#ff4d4f;pointer-events:none;z-index:2;box-shadow:0 0 0 1px #0006';
@@ -134,13 +135,24 @@ function draw() {
     for (const t of row.tags) {
       const x1 = xOf(t.start), end = t.end ?? curT, x2 = Math.max(x1 + 3, xOf(end));
       if (x2 < LABEL_W || x1 > W) continue;
+      const sel = t.id === S.selectedId, playing = S.playing.has(t.id), hov = t.id === hoverId;
       ctx.fillStyle = color;
-      ctx.globalAlpha = t.id === S.selectedId ? 1 : 0.82;
+      ctx.globalAlpha = sel || playing || hov ? 1 : 0.82;
       roundRect(ctx, x1, y + 3, x2 - x1, ROW_H - 6, 2);
       ctx.fill();
       ctx.globalAlpha = 1;
+      if (playing) { ctx.fillStyle = c.sand; ctx.fillRect(x1, y + ROW_H - 5, x2 - x1, 3); }   // now playing
       if (t.end == null) { ctx.setLineDash([3, 3]); ctx.strokeStyle = c.text; ctx.strokeRect(x1 + .5, y + 3.5, x2 - x1 - 1, ROW_H - 7); ctx.setLineDash([]); }
-      if (t.id === S.selectedId) { ctx.strokeStyle = c.text; ctx.lineWidth = 2; roundRect(ctx, x1, y + 2, x2 - x1, ROW_H - 4, 2); ctx.stroke(); ctx.lineWidth = 1; }
+      if (sel) {   // a glowing ring so the selected clip stands out from its neighbours
+        ctx.save();
+        ctx.shadowColor = c.text; ctx.shadowBlur = 6; ctx.strokeStyle = c.text; ctx.lineWidth = 2.5;
+        roundRect(ctx, x1 - 0.5, y + 1.5, x2 - x1 + 1, ROW_H - 3, 3); ctx.stroke();
+        ctx.restore();
+      } else if (hov) {
+        ctx.strokeStyle = c.text; ctx.globalAlpha = 0.7;
+        roundRect(ctx, x1 + 0.5, y + 2.5, x2 - x1 - 1, ROW_H - 5, 2); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
       if (S.checked.has(t.id)) { ctx.fillStyle = c.text; ctx.fillRect(x1 + 2, y + ROW_H - 6, 4, 2); }
       if (x2 - x1 > 46) {
         const p = playerById(t.player_id);
@@ -264,6 +276,7 @@ canvas.addEventListener('mouseleave', () => tip(null));
 
 function hover(ev) {
   const h = hitTest(ev);
+  if ((h.tag?.id ?? null) !== hoverId) { hoverId = h.tag?.id ?? null; requestDraw(); }
   canvas.style.cursor = h.edge ? 'ew-resize' : h.tag ? 'pointer' : h.x < LABEL_W ? 'pointer' : 'grab';
   if (!h.tag) { tip(h.x < LABEL_W && h.row ? 'Click to filter to this row' : null, ev); return; }
   const t = h.tag, p = playerById(t.player_id);
@@ -340,6 +353,7 @@ $('#tlZoom').onclick = (e) => {
 };
 
 new ResizeObserver(() => requestDraw()).observe(scroll);
-['tags', 'select', 'filters', 'drawings', 'theme'].forEach((ev) => on(ev, requestDraw));
+['tags', 'select', 'filters', 'drawings', 'theme', 'playing'].forEach((ev) => on(ev, requestDraw));
+canvas.addEventListener('mouseleave', () => { if (hoverId != null) { hoverId = null; requestDraw(); } });
 on('duration', fit);
 on('match', fit);

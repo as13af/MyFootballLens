@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS tags(
   code TEXT NOT NULL, team TEXT, start REAL NOT NULL, end REAL,
   player_id INTEGER REFERENCES players(id) ON DELETE SET NULL,
   x REAL, y REAL, x2 REAL, y2 REAL, note TEXT DEFAULT '',
-  source TEXT DEFAULT 'video', live_half INTEGER, synced INTEGER DEFAULT 1, created REAL);
+  source TEXT DEFAULT 'video', live_half INTEGER, synced INTEGER DEFAULT 1, created REAL,
+  moment REAL);  -- video time a pasted timestamp points at (Moments); the clip is built around it
 CREATE INDEX IF NOT EXISTS idx_tags_match ON tags(match_id, start);
 CREATE TABLE IF NOT EXISTS tag_labels(
   tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
@@ -122,6 +123,9 @@ def init():
     with conn() as c:
         c.execute("PRAGMA journal_mode = WAL")
         c.executescript(SCHEMA)
+        # Columns added after v1: older databases get them here (the backup above runs first).
+        if "moment" not in {r[1] for r in c.execute("PRAGMA table_info(tags)")}:
+            c.execute("ALTER TABLE tags ADD COLUMN moment REAL")
         if not c.execute("SELECT 1 FROM templates LIMIT 1").fetchone():
             tpl = json.loads((Path(__file__).parent / "template_football.json").read_text("utf-8"))
             tid = c.execute("INSERT INTO templates(name) VALUES (?)", (tpl["name"],)).lastrowid
