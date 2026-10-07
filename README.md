@@ -37,6 +37,7 @@ Options: `--port 8010`, `--no-browser`. Requires Python 3.11+ and `ffmpeg`/`ffpr
    - click a row label to filter to that row.
 6. **Draw** (<kbd>`</kbd>): arrows, runs, lines, rings, player spotlight, zones, freehand and text.
    Saved drawings freeze playback for *Hold* seconds and are burned into exports as freeze-frames.
+   - **Motion**: drawings animate on their own. See [Animated drawings](#animated-drawings) below.
    - **Curved arrow / curved run / curved line**: click the start, click a point the curve passes through, click the end.
      Esc or right-click cancels.
    - **Text**: click where it goes. A text box opens with:
@@ -72,6 +73,44 @@ Options: `--port 8010`, `--no-browser`. Requires Python 3.11+ and `ffmpeg`/`ffpr
 10. **Live** tab: tag against a match clock during the game. Afterwards, enter both kick-off times in the video and **Sync**.
 11. **Templates**: edit buttons (name, instant/toggle, lead/lag, hotkey, colour, A+B/neutral, location, end point) and descriptors (group, label, key, success/fail).
 12. **Data ▾**: Sportscode-compatible XML import/export (`ALL_INSTANCES`), CSV export, exports folder.
+
+## Animated drawings
+
+![Shapes drawing on one after another, then pulsing, flowing and rippling](docs/drawing-motion.gif)
+
+When a drawing appears, its shapes draw themselves in, in the order you drew them.
+Each shape then loops a subtle effect for as long as the freeze-frame lasts.
+This happens both in the app and in exported MP4s.
+
+**Draw an animated frame**
+
+1. Pause on the moment you want, then press <kbd>`</kbd> (or **✎ Draw**).
+2. Draw your shapes in the order you want them to appear, e.g. the run first, then the pass, then the ring around the receiver.
+3. Press **▶ Preview** to watch it play from the start.
+4. Set **Hold** (how many seconds the frame freezes), then **Save drawing**.
+   The button shows *Rendering animation…* for a few seconds while it prepares the frames for exports.
+
+**Change how a shape moves**
+
+1. Pick the **Select tool** (pointer icon) and click the shape.
+2. Use the **Draw-on** button and the loop menu next to the colours:
+   - **Draw-on** on/off: whether the shape draws itself in, or is there from the first frame.
+   - **Loop**: what it does after drawing on. *(auto)* marks the default for that shape.
+3. The shape replays straight away so you can see the change. Save the drawing to keep it.
+
+| Shape | Draw-on | Default loop | Other loops |
+|---|---|---|---|
+| Arrow, curved arrow, line, freehand | grows from start to tip | **Pulse**: a soft breathing glow | None |
+| Run (dashed), zone | grows / opens out | **Flow**: dashes march toward the tip or round the zone | Pulse, None |
+| Ring, player spotlight | sweeps round / rises from the ground | **Ripple**: rings spreading outward | Pulse, None |
+| Text | fades in | none | — |
+
+**Tips**
+
+- Keep **Hold** longer than the draw-on. With many shapes the draw-on takes about 2 seconds, so the default 3 s hold works well.
+- Turn **Draw-on** off for context shapes (like a defensive line) so they're there straight away, and the key action draws in after them.
+- Drawings saved before this feature animate in the app, but export as a still image until you open them and **Save drawing** again.
+- Each animated drawing keeps its export frames in `data/drawings/<id>_anim/` (a few MB). They're deleted with the drawing.
 
 ## Branding
 

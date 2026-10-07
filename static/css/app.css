@@ -185,6 +185,9 @@ main { height: calc(100vh - var(--topbar-h)); }
 #drawBar { background: var(--panel-2); flex-wrap: wrap; }
 #drawBar .seg > button { min-width: 32px; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; }
 #drawBar .seg > button svg { width: 16px; height: 16px; }
+#drawMotion > button { font-size: 12px; }
+#drawMotion > select { border: 0; border-left: 1px solid var(--line-2); border-radius: 0; }
+#drawMotion > :disabled { opacity: .45; cursor: not-allowed; }
 #drawCanvas.active.tool-select { cursor: default; }
 /* text box popup over the video */
 .textpop {

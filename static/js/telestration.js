@@ -9,7 +9,7 @@ const canvas = $('#drawCanvas'), wrap = $('#videoWrap'), bar = $('#drawBar'), po
 const COLORS = ['#ffe14d', '#ffffff', '#ff4d4f', '#3b82f6', '#22c55e', '#f97316', '#111111'];
 const CURVED = { carrow: 'arrow', cdash: 'dash', cline: 'line' };   // 3-click tools -> look of the shape
 let active = false, tool = 'arrow', color = COLORS[0];
-let shapes = [], cur = null, editing = null, shown = null, holdTimer = 0;
+let shapes = [], cur = null, editing = null, shown = null, shownShapes = [], holdTimer = 0;
 let sel = null;          // index of the selected shape (Select tool)
 let drag = null;         // { kind: 'move' | 'pt', ... }
 let hist = [];           // undo snapshots of `shapes`
@@ -52,15 +52,34 @@ function linePoints(sh, P) {
   return out;
 }
 
+/** First `f` (0–1) of a polyline by length — used to "draw on" lines and arrows. */
+function partial(pts, f) {
+  if (f >= 1 || pts.length < 2) return pts;
+  const seg = [];
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) total += seg[i - 1] = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+  let left = total * Math.max(0, f);
+  const out = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    if (left >= seg[i - 1]) { out.push(pts[i]); left -= seg[i - 1]; continue; }
+    const k = seg[i - 1] ? left / seg[i - 1] : 0;
+    out.push([pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * k, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * k]);
+    break;
+  }
+  if (out.length < 2) out.push(pts[0]);
+  return out;
+}
+const pathLen = (pts) => pts.reduce((s, p, i) => (i ? s + Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) : 0), 0);
+
 /** Draw a polyline with an optional arrowhead at its end; the shaft stops short so the tip stays sharp. */
-function strokeArrow(ctx, pts, lw, { dashed, head }) {
+function strokeArrow(ctx, pts, lw, { dashed, head, dashOffset = 0 }) {
   const tip = pts[pts.length - 1];
-  const hl = head ? lw * 3.4 : 0;
+  const hl = head ? Math.min(lw * 3.4, pathLen(pts)) : 0;   // a line that is still drawing on gets a smaller head
   // direction of the last part of the path, measured over roughly one head length
   let k = pts.length - 2;
   while (k > 0 && Math.hypot(tip[0] - pts[k][0], tip[1] - pts[k][1]) < Math.max(hl, 2)) k--;
   const ang = Math.atan2(tip[1] - pts[k][1], tip[0] - pts[k][0]);
-  if (dashed) ctx.setLineDash([lw * 2.6, lw * 2]);
+  if (dashed) { ctx.setLineDash([lw * 2.6, lw * 2]); ctx.lineDashOffset = dashOffset; }
   ctx.beginPath();
   ctx.moveTo(pts[0][0], pts[0][1]);
   for (let i = 1; i < pts.length - 1; i++) {
@@ -98,55 +117,156 @@ function luminance(hex) {
   return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
 }
 
+// ---------- motion ----------
+// A shape can "draw on" when its drawing appears, then loop one effect (sh.anim = { in, loop };
+// missing keys mean the default for its type). Every loop shares one period, so an export can render
+// the intro once plus a single loop cycle and repeat that cycle seamlessly for the rest of the hold.
+export const LOOP = 1.6;                   // seconds per loop cycle
+const STAGGER = 0.18, MAX_STAGGER = 1.1;   // shapes draw on one after another, in drawing order
+const SETTLE = 0.35;                       // a loop eases in after its shape has drawn on
+const INTRO = { arrow: 0.55, dash: 0.65, line: 0.5, free: 0.7, circle: 0.45, spot: 0.45, rect: 0.4, text: 0.35 };
+/** Loop effects each shape type can use; the first one is its default. */
+export const LOOPS = {
+  arrow: ['pulse', 'none'], line: ['pulse', 'none'], free: ['pulse', 'none'], text: ['none'],
+  dash: ['flow', 'pulse', 'none'], rect: ['flow', 'pulse', 'none'],
+  circle: ['ripple', 'pulse', 'none'], spot: ['ripple', 'pulse', 'none'],
+};
+export const LOOP_NAMES = { pulse: 'Pulse', flow: 'Flow', ripple: 'Ripple', none: 'None' };
+
+const kindOf = (sh) => CURVED[sh.type] || sh.type;
+export function motionOf(sh) {
+  const opts = LOOPS[kindOf(sh)] || ['none'];
+  const loop = opts.includes(sh.anim?.loop) ? sh.anim.loop : opts[0];
+  return { in: sh.anim?.in ?? true, loop };
+}
+export const isAnimated = (list) => list.some((sh) => { const m = motionOf(sh); return m.in || m.loop !== 'none'; });
+
+/** When each shape starts drawing on, and how long it takes. */
+function introTimes(list) {
+  let n = 0;
+  return list.map((sh) => {
+    if (!motionOf(sh).in) return { start: 0, dur: 0 };
+    return { start: Math.min(n++ * STAGGER, MAX_STAGGER), dur: INTRO[kindOf(sh)] || 0.4 };
+  });
+}
+/** Seconds until every shape has drawn on and every loop is at full strength. */
+export function introLength(list) {
+  return Math.max(0, ...introTimes(list).map((x) => x.start + x.dur)) + (list.some((sh) => motionOf(sh).loop !== 'none') ? SETTLE : 0);
+}
+
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
+const easeOut = (v) => 1 - (1 - v) ** 3;
+
 // ---------- rendering (shared by screen, PNG, thumbnails) ----------
-export function renderShapes(ctx, list, w, h) {
+/** `t` = seconds since the drawing appeared; leave it out for the still, fully drawn look (thumbnails, old exports). */
+export function renderShapes(ctx, list, w, h, t) {
   const s = h / 720;
-  for (const sh of list) {
-    const P = sh.pts.map(([x, y]) => [x * w, y * h]);
-    const lw = sh.w * s;
-    ctx.save();
-    ctx.strokeStyle = ctx.fillStyle = sh.color;
-    ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 4 * s;
-    const [a, b] = [P[0], P[P.length - 1]];
-    const kind = CURVED[sh.type] || sh.type;
-    switch (kind) {
-      case 'arrow': case 'dash': case 'line':
-        strokeArrow(ctx, linePoints(sh, P), lw, { dashed: kind === 'dash', head: kind !== 'line' });
-        break;
-      case 'circle': {
-        const cx = (a[0] + b[0]) / 2, cy = (a[1] + b[1]) / 2;
-        ctx.beginPath(); ctx.ellipse(cx, cy, Math.abs(b[0] - a[0]) / 2 || 1, Math.abs(b[1] - a[1]) / 2 || 1, 0, 0, Math.PI * 2);
-        ctx.globalAlpha = 0.18; ctx.fill(); ctx.globalAlpha = 1; ctx.stroke();
-        break;
-      }
-      case 'spot': {
-        // Player spotlight: ring at the feet + soft beam upwards.
-        const rx = Math.max(8 * s, Math.abs(b[0] - a[0])), ry = rx * 0.32, beam = rx * 4.2;
-        ctx.shadowBlur = 0;
-        const g = ctx.createLinearGradient(0, a[1] - beam, 0, a[1]);
-        g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(1, hexA(sh.color, 0.38));
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.moveTo(a[0] - rx * 0.45, a[1] - beam); ctx.lineTo(a[0] + rx * 0.45, a[1] - beam);
-        ctx.lineTo(a[0] + rx, a[1]); ctx.ellipse(a[0], a[1], rx, ry, 0, 0, Math.PI); ctx.closePath(); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(a[0], a[1], rx, ry, 0, 0, Math.PI * 2);
-        ctx.fillStyle = hexA(sh.color, 0.3); ctx.fill(); ctx.stroke();
-        break;
-      }
-      case 'rect': {
-        const x = Math.min(a[0], b[0]), y = Math.min(a[1], b[1]), rw = Math.abs(b[0] - a[0]), rh = Math.abs(b[1] - a[1]);
-        ctx.globalAlpha = 0.22; ctx.fillRect(x, y, rw, rh); ctx.globalAlpha = 1;
-        ctx.setLineDash([lw * 2, lw * 1.4]); ctx.strokeRect(x, y, rw, rh);
-        break;
-      }
-      case 'free':
-        ctx.beginPath(); P.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
-        break;
-      case 'text': drawText(ctx, sh, w, h); break;
-    }
-    ctx.restore();
+  const times = t == null ? null : introTimes(list);
+  const ph = t == null ? 0 : (t % LOOP) / LOOP;           // loop phase, 0–1
+  const breathe = 0.5 - 0.5 * Math.cos(ph * Math.PI * 2);  // 0 → 1 → 0 over one loop
+  list.forEach((sh, i) => {
+    const m = t == null ? { in: false, loop: 'none' } : motionOf(sh);
+    const it = times?.[i];
+    const raw = m.in ? clamp01((t - it.start) / it.dur) : 1;
+    if (raw <= 0) return;
+    const pr = easeOut(raw);                                                     // draw-on progress
+    const amp = t == null ? 0 : clamp01((t - (m.in ? it.start + it.dur : 0)) / SETTLE);  // loop strength
+    const fx = { pr, pulse: m.loop === 'pulse' ? breathe * amp : 0, flow: m.loop === 'flow' ? ph : 0, ripple: m.loop === 'ripple' ? amp : 0, ph };
+    drawShape(ctx, sh, w, h, s, fx);
+  });
+}
+
+/** A soft, breathing glow along a path (the "pulse" loop). */
+function glow(ctx, path, lw, color, p) {
+  if (p <= 0.01) return;
+  ctx.save();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 0.32 * p;
+  ctx.strokeStyle = color; ctx.lineWidth = lw * (1.6 + 1.4 * p);
+  ctx.shadowColor = color; ctx.shadowBlur = lw * 3 * p;
+  path(); ctx.stroke();
+  ctx.restore();
+}
+
+/** Expanding rings that fade out (the "ripple" loop): two rings, half a cycle apart. */
+function ripple(ctx, cx, cy, rx, ry, lw, color, fx) {
+  if (fx.ripple <= 0) return;
+  ctx.save();
+  ctx.setLineDash([]); ctx.shadowBlur = 0; ctx.strokeStyle = color;
+  for (const off of [0, 0.5]) {
+    const q = (fx.ph + off) % 1;
+    ctx.globalAlpha = 0.55 * (1 - q) ** 1.5 * fx.ripple;
+    ctx.lineWidth = lw * (0.7 - 0.35 * q);
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx * (1 + 0.5 * q), ry * (1 + 0.5 * q), 0, 0, Math.PI * 2); ctx.stroke();
   }
+  ctx.restore();
+}
+
+function drawShape(ctx, sh, w, h, s, fx) {
+  const P = sh.pts.map(([x, y]) => [x * w, y * h]);
+  const lw = sh.w * s;
+  const { pr } = fx;
+  ctx.save();
+  ctx.strokeStyle = ctx.fillStyle = sh.color;
+  ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 4 * s;
+  const [a, b] = [P[0], P[P.length - 1]];
+  const kind = kindOf(sh);
+  switch (kind) {
+    case 'arrow': case 'dash': case 'line': case 'free': {
+      const full = kind === 'free' ? P : linePoints(sh, P);
+      const pts = partial(full, pr);
+      glow(ctx, () => { ctx.beginPath(); pts.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); }, lw, sh.color, fx.pulse);
+      if (kind === 'free') { ctx.beginPath(); pts.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke(); break; }
+      // flow: the dash pattern (2.6 + 2 line widths) moves two repeats per loop toward the tip
+      strokeArrow(ctx, pts, lw, { dashed: kind === 'dash', head: kind !== 'line', dashOffset: -fx.flow * lw * 4.6 * 2 });
+      break;
+    }
+    case 'circle': {
+      const cx = (a[0] + b[0]) / 2, cy = (a[1] + b[1]) / 2, rx = Math.abs(b[0] - a[0]) / 2 || 1, ry = Math.abs(b[1] - a[1]) / 2 || 1;
+      const ring = () => { ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); };
+      ripple(ctx, cx, cy, rx, ry, lw, sh.color, fx);
+      glow(ctx, ring, lw, sh.color, fx.pulse);
+      ring(); ctx.globalAlpha = 0.18 * pr; ctx.fill(); ctx.globalAlpha = 1;
+      // draw-on: the ring sweeps round from the top
+      ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pr); ctx.stroke();
+      break;
+    }
+    case 'spot': {
+      // Player spotlight: ring at the feet + soft beam upwards. Draw-on grows it out of the ground.
+      const rx = Math.max(8 * s, Math.abs(b[0] - a[0])), ry = rx * 0.32, beam = rx * 4.2 * pr;
+      ripple(ctx, a[0], a[1], rx, ry, lw, sh.color, fx);
+      ctx.globalAlpha = pr;
+      ctx.shadowBlur = 0;
+      const g = ctx.createLinearGradient(0, a[1] - beam, 0, a[1]);
+      g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(1, hexA(sh.color, 0.38 + 0.12 * fx.pulse));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(a[0] - rx * 0.45, a[1] - beam); ctx.lineTo(a[0] + rx * 0.45, a[1] - beam);
+      ctx.lineTo(a[0] + rx, a[1]); ctx.ellipse(a[0], a[1], rx, ry, 0, 0, Math.PI); ctx.closePath(); ctx.fill();
+      const feet = () => { ctx.beginPath(); ctx.ellipse(a[0], a[1], rx * (0.5 + 0.5 * pr), ry * (0.5 + 0.5 * pr), 0, 0, Math.PI * 2); };
+      glow(ctx, feet, lw, sh.color, fx.pulse);
+      feet(); ctx.fillStyle = hexA(sh.color, 0.3); ctx.fill(); ctx.stroke();
+      break;
+    }
+    case 'rect': {
+      // draw-on: the zone opens out from its centre
+      const k = 0.85 + 0.15 * pr;
+      const cx = (a[0] + b[0]) / 2, cy = (a[1] + b[1]) / 2, rw = Math.abs(b[0] - a[0]) * k, rh = Math.abs(b[1] - a[1]) * k;
+      const x = cx - rw / 2, y = cy - rh / 2;
+      glow(ctx, () => { ctx.beginPath(); ctx.rect(x, y, rw, rh); }, lw, sh.color, fx.pulse);
+      ctx.globalAlpha = 0.22 * pr; ctx.fillRect(x, y, rw, rh); ctx.globalAlpha = pr;
+      ctx.setLineDash([lw * 2, lw * 1.4]); ctx.lineDashOffset = -fx.flow * lw * 3.4 * 2;
+      ctx.strokeRect(x, y, rw, rh);
+      break;
+    }
+    case 'text':
+      ctx.globalAlpha = pr;
+      ctx.translate(0, (1 - pr) * 10 * s);   // fades in while rising into place
+      drawText(ctx, sh, w, h);
+      break;
+  }
+  ctx.restore();
 }
 
 function drawText(ctx, sh, w, h) {
@@ -179,19 +299,48 @@ function hexA(hex, a) {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
+// ---------- animation clock ----------
+// t0 = when the visible drawing "appeared". Draw mode starts it far in the past so shapes are already
+// drawn on and only their loops move; Preview resets it to replay the whole animation.
+let t0 = 0, raf = 0;
+const now = () => performance.now();
+const elapsed = () => (now() - t0) / 1000;
+
+/** Show a saved drawing on the video (null hides it); its animation starts from the beginning. */
+function show(d) {
+  shown = d;
+  shownShapes = d ? JSON.parse(d.shapes || '[]') : [];
+  t0 = now();
+  redraw();
+}
+
+function moving(list) {
+  return list.some((sh) => motionOf(sh).loop !== 'none') || elapsed() < introLength(list);
+}
+
+/** Keep redrawing every frame only while something on screen is actually animating. */
+function kick() {
+  const list = active ? shapes : shown ? shownShapes : [];
+  if (raf || !list.length || !moving(list)) return;
+  raf = requestAnimationFrame(() => { raf = 0; redraw(); });
+}
+
 function redraw() {
   const ctx = canvas.getContext('2d');
   const w = canvas.clientWidth, h = canvas.clientHeight;
   ctx.clearRect(0, 0, w, h);
   if (!active) {
-    if (shown) renderShapes(ctx, JSON.parse(shown.shapes || '[]'), w, h);
+    if (shown) renderShapes(ctx, shownShapes, w, h, elapsed());
+    kick();
     return;
   }
   const list = [...shapes];
   if (cur) list.push(previewOf(cur));
   if (textEdit && textEdit.index == null) list.push(textEdit.shape);
-  renderShapes(ctx, list, w, h);
+  renderShapes(ctx, list, w, h, elapsed());
   if (sel != null && shapes[sel]) drawSelection(ctx, shapes[sel], w, h);
+  syncMotion();
+  kick();
 }
 
 /** A 3-click curve in progress: show it straight after click 1, curved through the 2nd point after click 2. */
@@ -296,7 +445,8 @@ export function enter() {
   hist = []; sel = null; cur = null;
   if (editing) { video.currentTime = editing.t; $('#drawHold').value = editing.hold; }
   $('#drawDelete').hidden = !editing;
-  shown = null;
+  shown = null; shownShapes = [];
+  t0 = now() - 1e6;   // already drawn on; loops keep moving while editing
   setTool(editing && tool !== 'select' ? 'select' : tool);
   layout();
 }
@@ -341,18 +491,55 @@ async function save() {
     t: editing ? editing.t : video.currentTime, hold: +$('#drawHold').value || 3,
     shapes: JSON.stringify(shapes), png: off.toDataURL('image/png'), thumb: thumbnail(shapes),
   };
+  const btn = $('#drawSave');
+  btn.disabled = true;
   try {
+    let d;
     if (editing) {
-      const d = await api.put(`/api/drawings/${editing.id}`, body);
-      Object.assign(editing, d);
+      d = Object.assign(editing, await api.put(`/api/drawings/${editing.id}`, body));
     } else {
-      S.drawings.push(await api.post(`/api/matches/${S.match.id}/drawings`, body));
+      d = await api.post(`/api/matches/${S.match.id}/drawings`, body);
+      S.drawings.push(d);
       S.drawings.sort((a, b) => a.t - b.t);
+      editing = d;   // if the animation upload fails, saving again updates this drawing instead of duplicating it
+    }
+    if (isAnimated(shapes)) {
+      btn.textContent = 'Rendering animation…';
+      await uploadFrames(d.id, shapes, vw, vh);
     }
     emit('drawings');
     toast('Drawing saved — playback pauses here and exports show a freeze-frame');
     exit();
-  } catch (e) { errToast(e); }
+  } catch (e) { errToast(e); } finally { btn.disabled = false; btn.textContent = 'Save drawing'; }
+}
+
+const FPS = 30;   // animation frame rate in exports; LOOP * FPS is a whole number of frames
+
+/**
+ * Render the animation for exports: the intro (draw-on) frames once, then one loop cycle that
+ * ffmpeg repeats for the rest of the hold. Sent as one binary body of PNGs; `sizes` splits it.
+ */
+async function uploadFrames(did, list, vw, vh) {
+  const k = Math.min(1, 1080 / vh);   // 4K sources: render at 1080p, ffmpeg scales it up to the frame
+  const w = Math.round(vw * k), h = Math.round(vh * k);
+  const intro = Math.ceil(introLength(list) * FPS);
+  const loop = list.some((sh) => motionOf(sh).loop !== 'none') ? Math.round(LOOP * FPS) : 1;
+  // Drawing a frame takes well under a millisecond; PNG encoding is the slow part, and the browser
+  // runs several encodes in parallel. A few canvases at a time keeps memory small.
+  const pool = Array.from({ length: 6 }, () => Object.assign(document.createElement('canvas'), { width: w, height: h }));
+  const blobs = [];
+  for (let f0 = 0; f0 < intro + loop; f0 += pool.length) {
+    const batch = pool.slice(0, Math.min(pool.length, intro + loop - f0)).map((c, k) => {
+      const ctx = c.getContext('2d');
+      ctx.clearRect(0, 0, w, h);
+      renderShapes(ctx, list, w, h, (f0 + k) / FPS);
+      return new Promise((ok) => c.toBlob(ok, 'image/png'));   // toBlob copies the pixels when called
+    });
+    blobs.push(...await Promise.all(batch));
+  }
+  const q = new URLSearchParams({ fps: FPS, intro, loop, sizes: blobs.map((b) => b.size).join(',') });
+  const r = await fetch(`/api/drawings/${did}/frames?${q}`, { method: 'POST', body: new Blob(blobs) });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || 'Saving the animation failed');
 }
 
 /** Small JPEG (frame + drawing) for the Drawings list. Same-origin video, so the canvas isn't tainted. */
@@ -369,7 +556,7 @@ function thumbnail(list) {
 export async function deleteDrawing(d) {
   await api.del(`/api/drawings/${d.id}`);
   S.drawings = S.drawings.filter((x) => x.id !== d.id);
-  if (shown?.id === d.id) shown = null;
+  if (shown?.id === d.id) { shown = null; shownShapes = []; }
   if (editing?.id === d.id) exit(); else redraw();
   emit('drawings');
   toast('Drawing deleted');
@@ -388,8 +575,7 @@ export function jumpTo(d, { edit = false } = {}) {
   video.currentTime = d.t;
   clearTimeout(holdTimer);
   if (edit) { enter(); return; }
-  shown = d;
-  redraw();
+  show(d);
 }
 
 /** Change how long a drawing freezes playback and exports. */
@@ -572,18 +758,17 @@ pop.addEventListener('pointerdown', (e) => e.stopPropagation());
 
 // ---------- playback of saved drawings ----------
 on('drawing-hit', (d) => {
-  shown = d;
-  redraw();
+  show(d);
   clearTimeout(holdTimer);
   holdTimer = setTimeout(() => {
-    if (shown === d && !active && video.paused) { shown = null; redraw(); video.play(); }
+    if (shown === d && !active && video.paused) { show(null); video.play(); }
   }, (d.hold || 3) * 1000);
 });
-video.addEventListener('play', () => { if (shown) { shown = null; clearTimeout(holdTimer); redraw(); } });
+video.addEventListener('play', () => { if (shown) { clearTimeout(holdTimer); show(null); } });
 on('seeked', (t) => {
   if (active) return;
   const d = video.paused ? drawingAt(t, 0.05) || null : null;
-  if (d !== shown) { shown = d; redraw(); }
+  if (d !== shown) show(d);
 });
 
 // ---------- toolbar ----------
@@ -609,6 +794,33 @@ $('#drawColors').onclick = (e) => { const b = e.target.closest('[data-c]'); if (
 $('#drawWidth').onchange = (e) => {
   if (sel != null && shapes[sel] && shapes[sel].type !== 'text') { snap(); shapes[sel].w = +e.target.value; redraw(); }
 };
+
+// Motion of the selected shape. New shapes use their type's default ("Auto"); these override it.
+let motionKey = null;
+function syncMotion() {
+  const sh = sel != null ? shapes[sel] : null;
+  const key = sh ? `${sel}|${sh.type}|${sh.anim?.in}|${sh.anim?.loop}` : '';
+  if (key === motionKey) return;   // redraw runs every animation frame; only touch the DOM on change
+  motionKey = key;
+  const inBtn = $('#drawIn'), loopSel = $('#drawLoop');
+  inBtn.disabled = loopSel.disabled = !sh;
+  $('#drawMotion').title = sh ? '' : 'Select a shape to change its motion — new shapes animate automatically';
+  if (!sh) { inBtn.classList.remove('active'); loopSel.innerHTML = '<option>Auto</option>'; return; }
+  const m = motionOf(sh), opts = LOOPS[kindOf(sh)] || ['none'];
+  inBtn.classList.toggle('active', m.in);
+  loopSel.innerHTML = opts.map((o, i) => `<option value="${o}">${LOOP_NAMES[o]}${i === 0 ? ' (auto)' : ''}</option>`).join('');
+  loopSel.value = m.loop;
+}
+function setMotion(patch) {
+  if (sel == null || !shapes[sel]) return;
+  snap();
+  shapes[sel].anim = { ...shapes[sel].anim, ...patch };
+  t0 = now();   // replay so the change is visible straight away
+  redraw();
+}
+$('#drawIn').onclick = () => { const sh = shapes[sel]; if (sh) setMotion({ in: !motionOf(sh).in }); };
+$('#drawLoop').onchange = (e) => setMotion({ loop: e.target.value });
+$('#drawPreview').onclick = () => { t0 = now(); redraw(); };
 $('#drawUndo').onclick = undo;
 $('#drawClear').onclick = () => { if (shapes.length) { snap(); shapes = []; sel = null; redraw(); } };
 $('#drawSave').onclick = save;
@@ -617,5 +829,5 @@ $('#drawClose').onclick = exit;
 $('#tDraw').onclick = toggle;
 video.addEventListener('loadedmetadata', layout);
 new ResizeObserver(layout).observe(wrap);
-on('match', () => { exit(); shown = null; redraw(); });
+on('match', () => { exit(); show(null); });
 on('goto-drawing', ({ d, edit }) => jumpTo(d, { edit }));

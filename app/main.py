@@ -2,6 +2,7 @@
 import csv
 import io
 import mimetypes
+import shutil
 import subprocess
 import sys
 import time
@@ -150,6 +151,7 @@ def delete_match(mid: int):
             if p:
                 Path(p).unlink(missing_ok=True)
             _thumb(did).unlink(missing_ok=True)
+            shutil.rmtree(export.anim_dir(did), ignore_errors=True)
         c.execute("DELETE FROM matches WHERE id=?", (mid,))
     return {"ok": True}
 
@@ -339,8 +341,30 @@ def update_drawing(did: int, body: dict = Body(...)):
             raise HTTPException(404, "Drawing not found")
         c.execute("UPDATE drawings SET t=?, hold=?, shapes=? WHERE id=?",
                   (float(body.get("t", d["t"])), float(body.get("hold", d["hold"])), body.get("shapes", d["shapes"]), did))
+        if "shapes" in body:  # old animation frames no longer match; the client uploads new ones if it animates
+            shutil.rmtree(export.anim_dir(did), ignore_errors=True)
         _save_drawing_files(c, did, body)
         return _drawing_out(c, did)
+
+
+@app.post("/api/drawings/{did}/frames")
+async def save_drawing_frames(did: int, request: Request, fps: int, intro: int, loop: int, sizes: str):
+    """Animated drawing for exports: the body is `intro` + `loop` PNGs back to back, split by `sizes`."""
+    with db.conn() as c:
+        if not c.execute("SELECT 1 FROM drawings WHERE id=?", (did,)).fetchone():
+            raise HTTPException(404, "Drawing not found")
+    data = await request.body()
+    try:
+        lens = [int(n) for n in sizes.split(",")]
+    except ValueError:
+        raise HTTPException(400, "Bad frame sizes")
+    if not (1 <= fps <= 60 and intro >= 0 and loop >= 1 and len(lens) == intro + loop and sum(lens) == len(data)):
+        raise HTTPException(400, "Frame data doesn't match its description")
+    try:
+        export.save_anim(did, data, lens, fps, intro)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True}
 
 
 @app.delete("/api/drawings/{did}")
@@ -350,6 +374,7 @@ def delete_drawing(did: int):
         if d and d["png_path"]:
             Path(d["png_path"]).unlink(missing_ok=True)
         _thumb(did).unlink(missing_ok=True)
+        shutil.rmtree(export.anim_dir(did), ignore_errors=True)
         c.execute("DELETE FROM drawings WHERE id=?", (did,))
     return {"ok": True}
 

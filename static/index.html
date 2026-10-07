@@ -105,6 +105,11 @@
         </div>
         <div class="seg" id="drawColors"></div>
         <select id="drawWidth" title="Line width"><option value="3">Thin</option><option value="5" selected>Medium</option><option value="8">Thick</option></select>
+        <div class="seg" id="drawMotion">
+          <button id="drawIn" title="Draw-on: the shape draws itself in when the drawing appears">Draw-on</button>
+          <select id="drawLoop" title="Looping effect once the shape has drawn on"></select>
+        </div>
+        <button id="drawPreview" class="ghost" title="Replay the animation from the start">▶ Preview</button>
         <label class="inline" title="Freeze-frame length in playback and exports">Hold <input id="drawHold" type="number" min="0.5" max="30" step="0.5" value="3">s</label>
         <span class="spacer"></span>
         <button id="drawUndo" class="ghost" title="Ctrl+Z">Undo</button>

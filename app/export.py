@@ -235,7 +235,7 @@ def _export(job, match_id, tag_ids, name, opts):
             if d["t"] - cur > 0.05:
                 segs.append({"type": "span", "s": cur, "e": d["t"], "cap": cap})
             segs.append({"type": "freeze", "t": d["t"], "hold": max(0.5, d.get("hold") or 3),
-                         "png": d["png_path"], "cap": cap})
+                         "png": d["png_path"], "did": d["id"], "anim": load_anim(d["id"]), "cap": cap})
             cur = d["t"]
         if e - cur > 0.05:
             segs.append({"type": "span", "s": cur, "e": e, "cap": cap})
@@ -270,18 +270,28 @@ def _export(job, match_id, tag_ids, name, opts):
                 dur = sg["hold"]
                 frame = tmp / f"frame{i:04d}.png"
                 _run_ffmpeg(job, ["-ss", f"{sg['t']:.3f}", "-i", src, "-frames:v", "1", str(frame)], 0, done, total)
-                # Drawing PNG may come from the proxy, so scale it to the source frame size.
-                vf = (f"[1:v]format=rgba,scale={info['width']}:{info['height']}[ov];[0:v][ov]overlay=0:0,"
+                anim = sg["anim"]
+                if anim:
+                    # Animated drawing: the intro frames play once, then the loop frames repeat to the end.
+                    ad, r = anim_dir(sg["did"]), str(anim["fps"])
+                    ov_in = ["-framerate", r, "-start_number", "0", "-i", str(ad / "i%04d.png")] if anim["intro"] else []
+                    ov_in += ["-stream_loop", "-1", "-framerate", r, "-start_number", "0", "-i", str(ad / "l%04d.png")]
+                    ov = "[1:v][2:v]concat=n=2:v=1:a=0," if anim["intro"] else "[1:v]"
+                else:
+                    ov_in, ov = ["-i", sg["png"]], "[1:v]"
+                a_in = 1 + ov_in.count("-i")
+                # Drawing PNGs may come from the proxy, so scale them to the source frame size.
+                vf = (f"{ov}format=rgba,scale={info['width']}:{info['height']}[ov];[0:v][ov]overlay=0:0,"
                       f"{_scale(w, h)}{cap_f},fps={fps}")
                 logo_in = []
                 if use_logo:
-                    vf += "[v0]" + _logo(3, h)
+                    vf += "[v0]" + _logo(a_in + 1, h)
                     logo_in = ["-i", str(WATERMARK)]
                 else:
                     vf += "[v]"
                 args = ["-loop", "1", "-framerate", f"{fps}", "-t", f"{dur:.3f}", "-i", str(frame),
-                        "-i", sg["png"], "-f", "lavfi", "-t", f"{dur:.3f}", "-i", "anullsrc=r=48000:cl=stereo",
-                        *logo_in, "-filter_complex", vf, "-map", "[v]", "-map", "2:a", *venc, *aenc,
+                        *ov_in, "-f", "lavfi", "-t", f"{dur:.3f}", "-i", "anullsrc=r=48000:cl=stereo",
+                        *logo_in, "-filter_complex", vf, "-map", "[v]", "-map", f"{a_in}:a", *venc, *aenc,
                         "-t", f"{dur:.3f}", str(out)]
             job["message"] = f"Encoder: {enc} · segment {i + 1}/{len(segs)}"
             _run_ffmpeg(job, args, dur, done, total)
@@ -344,6 +354,39 @@ def _proxy(job, match_id):
     with db.conn() as c:
         c.execute("UPDATE matches SET proxy_path=? WHERE id=?", (str(out), match_id))
     job["out"] = str(out)
+
+
+# ---------------- animated drawings ----------------
+PNG_SIG = bytes.fromhex("89504e470d0a1a0a")
+
+
+def anim_dir(did) -> Path:
+    return db.DRAWINGS / f"{did}_anim"
+
+
+def save_anim(did, data: bytes, sizes: list[int], fps: int, intro: int):
+    """Store a drawing's animation as i0000.png… (intro, played once) and l0000.png… (one loop cycle)."""
+    dest = anim_dir(did)
+    tmp = dest.with_name(dest.name + ".new")
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True)
+    pos = 0
+    for k, n in enumerate(sizes):
+        png, pos = data[pos:pos + n], pos + n
+        if not png.startswith(PNG_SIG):
+            shutil.rmtree(tmp, ignore_errors=True)
+            raise ValueError("Animation frame is not a PNG")
+        (tmp / (f"i{k:04d}.png" if k < intro else f"l{k - intro:04d}.png")).write_bytes(png)
+    (tmp / "anim.json").write_text(json.dumps({"fps": fps, "intro": intro, "loop": len(sizes) - intro}), "utf-8")
+    shutil.rmtree(dest, ignore_errors=True)
+    tmp.rename(dest)
+
+
+def load_anim(did) -> dict | None:
+    try:
+        return json.loads((anim_dir(did) / "anim.json").read_text("utf-8"))
+    except (OSError, ValueError):
+        return None
 
 
 def save_image(data_url: str, path: Path, mime="image/png"):
