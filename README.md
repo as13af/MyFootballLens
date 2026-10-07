@@ -7,7 +7,12 @@ The server idles at about 50 MB of RAM.
 
 ## Start
 
-Double-click **`start.bat`**. The first run creates `.venv` and installs the two dependencies.
+1. **Get the code**, either way:
+   - with git: `git clone https://github.com/as13af/MyFootballLens.git`
+   - or on GitHub: **Code → Download ZIP**, then unzip it.
+2. Install **Python 3.11+** and **ffmpeg**. ffmpeg is needed for exports and proxies; on Windows you can install it with `winget install Gyan.FFmpeg`.
+3. Open the folder and double-click **`start.bat`**. The first run creates `.venv` and installs the two dependencies.
+
 You can also start it by hand:
 
 ```
@@ -16,7 +21,8 @@ python -m venv .venv
 .venv\Scripts\python run.py            # opens http://127.0.0.1:8000
 ```
 
-Options: `--port 8010`, `--no-browser`. Requires Python 3.11+ and `ffmpeg`/`ffprobe` on PATH (needed for exports and proxies).
+Options: `--port 8010`, `--no-browser`. `ffmpeg` and `ffprobe` must be on PATH.
+To update a git copy later, run `git pull` in the folder (your `data/` folder is never touched).
 
 ## Workflow
 
